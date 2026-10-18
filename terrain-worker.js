@@ -1,2 +1,7 @@
-import {buildTile} from './terrain.js';
-onmessage=({data:{tx,tz,segments,id}})=>{const data=buildTile(tx,tz,segments);postMessage({tx,tz,segments,id,...data},Object.values(data).map(a=>a.buffer));};
+import {buildTile,buildHorizon,configureTerrain} from './terrain.js';
+onmessage=({data})=>{
+ if(data.type==='init'){configureTerrain(data.metadata,data.buffer);postMessage({type:'ready'});return;}
+ const {tx,tz,segments,id,rangeKm}=data;
+ const buffers=data.type==='horizon'?buildHorizon(tx,tz,rangeKm):buildTile(tx,tz,segments);
+ postMessage({type:data.type,tx,tz,segments,id,...buffers},Object.values(buffers).map(a=>a.buffer));
+};

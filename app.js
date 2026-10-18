@@ -1,6 +1,7 @@
 
     import * as THREE from 'three/webgpu';
-    import {rnd, noise, fbm, height, sampleSurface} from './terrain.js';
+    import {rnd, noise, fbm, height, sampleSurface, configureTerrain} from './terrain.js';
+    import {bodyPosition,starDirection,angularRadius,createSkyTransform,earthAxes} from './sky.js';
     const $ = (s) => document.getElementById(s);
     const clamp = THREE.MathUtils.clamp;
     const isTouch = matchMedia('(pointer:coarse)').matches;
@@ -13,7 +14,7 @@
     let lastFrame = performance.now(), lastStats = 0;
     const key = {}, move = {x:0,y:0}, tiles = new Map();
     const startPoint = new THREE.Vector3(0,0,170);
-    const TILE = 700, RANGE = 2, TWO_PI = Math.PI*2;
+    const TILE = 700, RANGE = 3, TWO_PI = Math.PI*2;
     let tileOriginX = 99999, tileOriginZ = 99999;
     const forward = new THREE.Vector3(), right = new THREE.Vector3(), desired = new THREE.Vector3();
     const moveSmoothed = new THREE.Vector3();
@@ -30,9 +31,10 @@
       const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(8,8);
       t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;return t;
     }
-    let terrainMaterial;
+    let terrainMaterial, horizonMesh, skyObjects=[],starCatalog=[],siteMetadata,skyLastUpdate=0;
+    let simulationDate=new Date('1971-07-30T22:16:00Z'),realTime=false,enhancedStars=false,viewRange=35;
     const worker=new Worker('./terrain-worker.js',{type:'module'});
-    let pending=[],busy=false,jobID=0,activeJob=null,terrainError=false;
+    let pending=[],busy=false,jobID=0,activeJob=null,terrainError=false,workerReady=false;
     const segments=()=>lowPower?32:48;
     function disposeTile(tile){scene.remove(tile.mesh);tile.mesh.geometry.dispose();tile.rocks.removeFromParent();tile.rocks.dispose()}
     function installTile(data){
@@ -46,10 +48,20 @@
       const mesh=new THREE.Mesh(g,terrainMaterial);mesh.position.set(tx*TILE,0,tz*TILE);mesh.receiveShadow=true;mesh.castShadow=true;scene.add(mesh);
       tiles.set(id,{mesh,segments:detail,rocks:placeRocks(tx,tz,detail)});
     }
-    worker.onmessage=({data})=>{busy=false;activeJob=null;installTile(data);pumpTiles()};
+    worker.onmessage=({data})=>{
+      if(data.type==='ready'){workerReady=true;pumpTiles();return;}
+      busy=false;activeJob=null;
+      if(data.type==='horizon'){
+        const g=new THREE.BufferGeometry();for(const [name,array,size] of [['position',data.positions,3],['normal',data.normals,3],['color',data.colors,3],['uv',data.uvs,2]])g.setAttribute(name,new THREE.BufferAttribute(array,size));
+        g.setIndex(new THREE.BufferAttribute(data.indices,1));g.computeBoundingSphere();
+        if(horizonMesh){scene.remove(horizonMesh);horizonMesh.geometry.dispose()}
+        horizonMesh=new THREE.Mesh(g,terrainMaterial);horizonMesh.receiveShadow=true;scene.add(horizonMesh);
+        for(const [id,tile] of tiles)if(Math.abs(tile.mesh.position.x/TILE-tileOriginX)>RANGE||Math.abs(tile.mesh.position.z/TILE-tileOriginZ)>RANGE){disposeTile(tile);tiles.delete(id)}
+      }else installTile(data);pumpTiles();
+    };
     worker.onerror=()=>{terrainError=true;busy=false;pending=[];showRecovery('Terrain generation failed. Reload to retry.');};
     function pumpTiles(){
-      if(busy||paused||terrainError||!pending.length)return;
+      if(busy||paused||terrainError||!workerReady||!pending.length)return;
       activeJob=pending.shift();busy=true;worker.postMessage({...activeJob,id:++jobID});
     }
     function updateTiles(force=false){
@@ -59,11 +71,11 @@
       for(let dz=-RANGE;dz<=RANGE;dz++)for(let dx=-RANGE;dx<=RANGE;dx++){
         const cx=tx+dx,cz=tz+dz,id=cx+','+cz,old=tiles.get(id);
         if(old?.segments===segments())continue;
-        if(activeJob?.tx===cx&&activeJob?.tz===cz&&activeJob?.segments===segments())continue;
+        if(activeJob?.type!=='horizon'&&activeJob?.tx===cx&&activeJob?.tz===cz&&activeJob?.segments===segments())continue;
         pending.push({tx:cx,tz:cz,segments:segments(),distance:dx*dx+dz*dz});
       }
-      pending.sort((a,b)=>a.distance-b.distance);
-      for(const [id,tile] of tiles)if(Math.abs(tile.mesh.position.x/TILE-tx)>RANGE||Math.abs(tile.mesh.position.z/TILE-tz)>RANGE){disposeTile(tile);tiles.delete(id)}
+      pending.sort((a,b)=>a.distance-b.distance);pending.splice(Math.min(9,pending.length),0,{type:'horizon',tx,tz,rangeKm:viewRange});
+      // Retain the previous edge tiles until the replacement horizon is installed.
       pumpTiles();
     }
     function ground(x,z){
@@ -89,35 +101,45 @@
       }
       mesh.instanceMatrix.needsUpdate=true;mesh.computeBoundingSphere();scene.add(mesh);return mesh;
     }
-    function createStars(){
-      let seed=8319;function sr(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}
-      const count=isTouch?1900:3100,a=new Float32Array(count*3);
-      for(let i=0;i<count;i++){
-        const u=sr()*2-1,t=sr()*TWO_PI,r=7000+sr()*2000,k=Math.sqrt(1-u*u);
-        a[i*3]=r*k*Math.cos(t);a[i*3+1]=r*u;a[i*3+2]=r*k*Math.sin(t);
+    async function createStars(){
+      const response=await fetch('./stars.json');if(!response.ok)throw new Error('Star catalogue unavailable');starCatalog=await response.json();
+      const a=new Float32Array(starCatalog.length*3),col=new Float32Array(a.length);
+      for(let i=0;i<starCatalog.length;i++){
+        const bv=starCatalog[i][5],brightness=Math.max(.12,Math.min(1,Math.pow(10,-.18*(starCatalog[i][4]+1))));
+        const colour=new THREE.Color().setRGB(bv<.3?.7:1,bv>1?.7:.9,bv>1?.5:1).multiplyScalar(brightness);col.set([colour.r,colour.g,colour.b],i*3);
       }
-      const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(a,3));
-      const m=new THREE.PointsMaterial({color:0xd5def5,size:isTouch?1:1.5,sizeAttenuation:false,transparent:true,opacity:.82,depthWrite:false});
-      stars=new THREE.Points(g,m);stars.frustumCulled=false;scene.add(stars);
+      const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(a,3));g.setAttribute('color',new THREE.BufferAttribute(col,3));
+      stars=new THREE.Points(g,new THREE.PointsMaterial({vertexColors:true,size:1.6,sizeAttenuation:false,transparent:true,depthWrite:false}));stars.frustumCulled=false;scene.add(stars);
+      for(const [name,colour,size] of [['Mercury',0xc4b6a1,2],['Venus',0xffefd0,3],['Mars',0xf1a070,2],['Jupiter',0xf6dfb3,2.8],['Saturn',0xe5d9af,2],['Uranus',0xa2d8dd,1.2],['Neptune',0x829fdb,1]]){
+        const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute([0,0,0],3));
+        const mesh=new THREE.Points(geometry,new THREE.PointsMaterial({color:colour,size,sizeAttenuation:false,transparent:true,depthWrite:false}));scene.add(mesh);skyObjects.push({name,mesh});
+      }
+      const solarDisc=new THREE.Mesh(new THREE.SphereGeometry(1,24,16),new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false}));scene.add(solarDisc);skyObjects.push({name:'Sun',mesh:solarDisc});
     }
-    function createEarth(){
-      const canvas=document.createElement('canvas');canvas.width=512;canvas.height=256;
-      const ctx=canvas.getContext('2d'),im=ctx.createImageData(512,256);
-      for(let y=0;y<256;y++)for(let x=0;x<512;x++){
-        const lon=x/512*TWO_PI,lat=(y/255-.5)*Math.PI;
-        const n=fbm(x*.008,y*.014,5), cloud=fbm(x*.028+113,y*.036-27,3);
-        const land=(n>.48 && Math.abs(lat)<1.2),ice=Math.abs(lat)>1.29;
-        const i=(y*512+x)*4;let r,g,b;
-        if(ice){r=195;g=210;b=218}else if(land){r=75+n*61;g=93+n*78;b=58+n*29}
-        else {r=19+n*23;g=64+n*43;b=123+n*77}
-        if(cloud>.57){const a=Math.min(.8,(cloud-.57)*3.7);r=r*(1-a)+225*a;g=g*(1-a)+229*a;b=b*(1-a)+232*a}
-        im.data[i]=r;im.data[i+1]=g;im.data[i+2]=b;im.data[i+3]=255;
+    function updateSky(force=false){
+      const now=performance.now();if(!force&&now-skyLastUpdate<1000)return;skyLastUpdate=now;
+      if(realTime){simulationDate=new Date();$('skyDate').value=simulationDate.toISOString().slice(0,16)}
+      const date=simulationDate,x=camera.position.x,z=camera.position.z;
+      const bodies=[{name:'Earth',mesh:earth},...skyObjects];let solar;
+      for(const body of bodies){
+        const position=bodyPosition(body.name,date,x,z,camera.position.y+siteMetadata.siteElevationMetres);
+        body.direction=position.direction;if(body.name==='Earth')earth.userData.direction=new THREE.Vector3().fromArray(position.direction);body.mesh.position.fromArray(position.direction).multiplyScalar(100000).add(camera.position);
+        if(body.name==='Sun'||body.name==='Earth')body.mesh.scale.setScalar(Math.tan(angularRadius(body.name==='Sun'?695700000:6371000,position.distance))*100000/(body.name==='Earth'?145:1));
+        if(body.name==='Sun')solar=position;
       }
-      ctx.putImageData(im,0,0);
-      const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
-      const sphere=new THREE.SphereGeometry(145,40,28);
-      earth=new THREE.Mesh(sphere,new THREE.MeshStandardMaterial({map:tex,roughness:1,metalness:0}));
-      earth.position.set(1050,1380,-6300);scene.add(earth);
+      const axes=earthAxes(date,x,z);earth.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(...['x','y','z'].map(a=>new THREE.Vector3().fromArray(axes[a]))));
+      const positions=stars.geometry.getAttribute('position'),transform=createSkyTransform(date,x,z);
+      for(let i=0;i<starCatalog.length;i++){const direction=starDirection(starCatalog[i],date,x,z,transform);positions.setXYZ(i,...direction.map(a=>a*100000))}positions.needsUpdate=true;
+      const daylight=solar.altitude>0;stars.material.opacity=daylight&&!enhancedStars?0:1;
+      for(const body of skyObjects)if(body.name!=='Sun')body.mesh.material.opacity=daylight&&!enhancedStars?0:1;
+      sun.intensity=daylight?3:0;
+      sun.userData.direction=new THREE.Vector3().fromArray(solar.direction);
+      $('skyInfo').textContent='APOLLO 15 · '+date.toISOString().slice(0,16).replace('T',' ')+' UTC · SUN '+solar.altitude.toFixed(1)+'°';
+      $('hint').textContent=daylight?'NORTH: FORWARD AT RESET · APOLLO 15':'LUNAR NIGHT · CHANGE DATE FOR SUNLIT TERRAIN';
+    }
+    async function createEarth(){
+      const texture=await new THREE.TextureLoader().loadAsync('./earth.jpg');texture.colorSpace=THREE.SRGBColorSpace;
+      earth=new THREE.Mesh(new THREE.SphereGeometry(145,40,28),new THREE.MeshStandardMaterial({map:texture,roughness:1,metalness:0}));scene.add(earth);
     }
     function configureGraphics(){
       renderer.setPixelRatio(lowPower?1:Math.min(devicePixelRatio,isTouch?1.35:1.75));
@@ -163,6 +185,12 @@
       $('settings').onclick=()=>{const panel=$('flightSettings');panel.hidden=!panel.hidden;$('settings').setAttribute('aria-expanded',String(!panel.hidden))};
       $('sensitivity').oninput=e=>sensitivity=Number(e.target.value);
       $('gravity').onchange=e=>{lunarGravity=e.target.checked;moveSmoothed.y=0};
+      $('skyDate').value=simulationDate.toISOString().slice(0,16);
+      $('skyDate').onchange=e=>{const date=new Date(e.target.value+'Z');if(!Number.isFinite(date.getTime())||date.getUTCFullYear()<1900||date.getUTCFullYear()>2100)return;simulationDate=date;realTime=false;$('liveSky').checked=false;updateSky(true)};
+      $('liveSky').onchange=e=>{realTime=e.target.checked;updateSky(true)};
+      $('enhancedStars').onchange=e=>{enhancedStars=e.target.checked;updateSky(true)};
+      $('viewRange').onchange=e=>{viewRange=Number(e.target.value);updateTiles(true)};
+      $('lookAt').onchange=e=>{if(!e.target.value)return;const p=bodyPosition(e.target.value,simulationDate,camera.position.x,camera.position.z,camera.position.y+siteMetadata.siteElevationMetres);const [x,y,z]=p.direction;const angle=Math.atan2(-x,-z);targetYaw=yaw+Math.atan2(Math.sin(angle-yaw),Math.cos(angle-yaw));targetPitch=clamp(Math.asin(y),-1.49,1.49);$('objectInfo').textContent=e.target.value+': '+p.altitude.toFixed(1)+'° altitude, '+p.azimuth.toFixed(1)+'° azimuth'+(p.altitude<0?' — below the horizon':'');};
       $('cruise').addEventListener('click',()=>{boosting=!boosting;$('cruise').setAttribute('aria-pressed',String(boosting));$('cruise').textContent=boosting?'BOOST: ON':'BOOST ×3'});
       $('quality').addEventListener('click',()=>{lowPower=!lowPower;configureGraphics()});
       $('reset').addEventListener('click',()=>resetFlight());
@@ -196,7 +224,7 @@
         }else moveSmoothed.lerp(desired,1-Math.exp(-(desired.lengthSq()?4:7)*dt));
         // Do not fly into tiles that have not arrived yet.
         const nextX=camera.position.x+moveSmoothed.x*dt,nextZ=camera.position.z+moveSmoothed.z*dt;
-        if(tiles.has(Math.round(nextX/TILE)+','+Math.round(nextZ/TILE))){camera.position.x=nextX;camera.position.z=nextZ}
+        if(tiles.has(Math.round(nextX/TILE)+','+Math.round(nextZ/TILE))){camera.position.x=clamp(nextX,-50000,50000);camera.position.z=clamp(nextZ,-50000,50000)}
         camera.position.y+=moveSmoothed.y*dt;
         const floor=ground(camera.position.x,camera.position.z)+5;
         const ahead=ground(camera.position.x+moveSmoothed.x*.5,camera.position.z+moveSmoothed.z*.5)+12;
@@ -209,9 +237,11 @@
         camera.rotation.set(pitch,yaw,0,'YXZ');
         // Anchor astronomical bodies to the observer, preventing apparent parallax on short flights.
         stars.position.copy(camera.position);
-        earth.position.set(camera.position.x+1050,camera.position.y+1340,camera.position.z-6300);
+        updateSky();
+        for(const body of skyObjects)if(body.direction)body.mesh.position.fromArray(body.direction).multiplyScalar(100000).add(camera.position);
+        if(earth.userData.direction)earth.position.copy(earth.userData.direction).multiplyScalar(100000).add(camera.position);
         const surface=ground(camera.position.x,camera.position.z);
-        sun.position.set(camera.position.x+1200,surface+650,camera.position.z-700);
+        sun.position.copy(sun.userData.direction??new THREE.Vector3(1,1,0)).multiplyScalar(2000).add(new THREE.Vector3(camera.position.x,surface,camera.position.z));
         sun.target.position.set(camera.position.x,surface,camera.position.z);sun.target.updateMatrixWorld();
       }
       if(time-lastStats>230){
@@ -225,8 +255,12 @@
     async function boot(){
       try{
         $('loadingText').textContent='INITIALISING WEBGPU RENDERER…';
+        const metadataResponse=await fetch('./apollo15.json'),elevationResponse=await fetch('./apollo15.f32');
+        if(!metadataResponse.ok||!elevationResponse.ok)throw new Error('Apollo 15 elevation data unavailable');
+        siteMetadata=await metadataResponse.json();const elevationBuffer=await elevationResponse.arrayBuffer();configureTerrain(siteMetadata,elevationBuffer);
+        worker.postMessage({type:'init',metadata:siteMetadata,buffer:elevationBuffer});
         scene=new THREE.Scene();scene.background=new THREE.Color(0x010205);
-        camera=new THREE.PerspectiveCamera(isTouch?74:70,innerWidth/innerHeight,.5,18000);
+        camera=new THREE.PerspectiveCamera(isTouch?74:70,innerWidth/innerHeight,.5,180000);
         renderer=new THREE.WebGPURenderer({antialias:true,alpha:false,forceWebGL});
         renderer.domElement.id='scene';
         renderer.outputColorSpace=THREE.SRGBColorSpace;
@@ -250,11 +284,11 @@
         scene.add(sun);scene.add(sun.target);
         terrainMaterial=new THREE.MeshStandardMaterial({map:createDustTexture(),vertexColors:true,roughness:1,metalness:0});
         camera.position.set(0,height(0,170)+72,170);
-        createStars();createEarth();createRocks();updateTiles();
-        initControls();configureGraphics();
+        await createStars();await createEarth();createRocks();updateTiles();
+        initControls();configureGraphics();updateSky(true);
         renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();showRecovery('Graphics context lost. Reload to recover.')});
         if(renderer.backend?.device?.lost)renderer.backend.device.lost.then(()=>showRecovery('Graphics device disconnected. Reload to recover.'));
-        while(!tiles.has('0,0')&&!terrainError)await new Promise(r=>setTimeout(r,20));
+        while((!tiles.has('0,0')||!horizonMesh)&&!terrainError)await new Promise(r=>setTimeout(r,20));
         if(terrainError)return;
         addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
         renderer.setAnimationLoop(frame);

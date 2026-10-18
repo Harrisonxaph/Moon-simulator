@@ -1,0 +1,16 @@
+{
+  "name": "Apollo 15 \u2014 Hadley\u2013Apennine",
+  "latitude": 26.1322,
+  "longitude": 3.6339,
+  "size": 257,
+  "spacing": 500.0,
+  "datumRadiusMetres": 1737400.0,
+  "siteElevationMetres": -1924.6751760275338,
+  "source": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/ldem_64.tif",
+  "sourcePixelsPerDegree": 64,
+  "sourceResolutionMetres": 474,
+  "extentMetres": 64000,
+  "heightDatum": "Local landing-site tangent plane, including spherical lunar curvature",
+  "credit": "NASA/LRO/LOLA; NASA Scientific Visualization Studio, CGI Moon Kit (Ernie Wright)",
+  "sourcePage": "https://svs.gsfc.nasa.gov/4720/"
+}
