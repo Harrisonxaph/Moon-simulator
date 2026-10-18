@@ -55,8 +55,9 @@
     #error{display:none;margin:12px auto 0;color:#f2c3b5;font-size:12px;max-width:380px;line-height:1.5}
     @media(pointer:coarse){#joy{display:block}#lift{display:flex}#bottom{bottom:calc(env(safe-area-inset-bottom) + 19px)}#orientation{display:none}}
     @media(max-width:650px){#brand{min-width:142px;padding:9px 10px}#brand h1{font-size:16px}#brand small{font-size:8px;letter-spacing:.4px}.stat{min-width:60px;padding:8px 9px}.stat b{font-size:12px}.stat span{font-size:8px}#stats{max-width:52vw}#stats .stat:nth-child(3){display:none}#bottom{gap:5px}.pill,.action{font-size:10px;padding:9px 11px}#hint{bottom:calc(env(safe-area-inset-bottom) + 209px);font-size:9px}#joy{width:116px;height:116px;bottom:calc(env(safe-area-inset-bottom) + 80px)}#lift{bottom:calc(env(safe-area-inset-bottom) + 87px)}#welcome h2{letter-spacing:4px}}
+    #baseInfo{position:absolute;top:calc(env(safe-area-inset-top) + 142px);left:calc(env(safe-area-inset-left) + 16px);z-index:10;color:var(--accent);font-size:9px;letter-spacing:.4px;pointer-events:none}#landmarkLabel{position:absolute;z-index:9;transform:translate(-50%,-100%);padding:6px 9px;border-radius:6px;background:rgba(0,0,0,.65);color:#eed0a5;font-size:11px;text-align:center;pointer-events:none;white-space:nowrap}#landmarkLabel small{display:block;font-size:8px;color:#ccc;margin-top:3px}
     #skyInfo{position:absolute;top:calc(env(safe-area-inset-top) + 114px);left:calc(env(safe-area-inset-left) + 16px);right:16px;z-index:10;color:#c3c5c7;font-size:10px;letter-spacing:.6px;pointer-events:none}#flightSettings input[type=datetime-local],#flightSettings select{display:block;margin-top:6px;max-width:100%;background:#171c22;color:white;border:1px solid #73777b;padding:8px;border-radius:6px}#flightSettings{max-height:calc(100dvh - 90px);overflow:auto;position:absolute;z-index:20;bottom:calc(env(safe-area-inset-bottom) + 65px);left:50%;transform:translateX(-50%);width:min(290px,90vw);padding:16px;border-radius:14px;color:var(--cream);font-size:13px}#flightSettings label{display:block;margin-bottom:12px}#flightSettings small{color:var(--muted)}#status{position:absolute;z-index:40;inset:40% 10% auto;padding:20px;background:#111;color:white;text-align:center;border-radius:12px}.pill{min-height:44px}#overlay{overflow:auto}#welcome{margin:auto}button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
-    @media(max-height:480px){#skyInfo{top:calc(env(safe-area-inset-top) + 102px);font-size:9px}#hint{display:none}#top{top:calc(env(safe-area-inset-top) + 8px)}#joy{bottom:calc(env(safe-area-inset-bottom) + 55px);left:calc(env(safe-area-inset-left) + 10px);width:99px;height:99px}#lift{bottom:calc(env(safe-area-inset-bottom) + 55px);right:calc(env(safe-area-inset-right) + 12px)}.lift{width:45px;height:45px}#bottom{bottom:calc(env(safe-area-inset-bottom) + 4px)}#logo{display:none}#welcome h2{font-size:40px}#welcome p{margin-bottom:8px}.controlsExplain{margin-top:10px}}
+    @media(max-height:480px){#baseInfo{top:calc(env(safe-area-inset-top) + 123px);font-size:8px}#skyInfo{top:calc(env(safe-area-inset-top) + 102px);font-size:9px}#hint{display:none}#top{top:calc(env(safe-area-inset-top) + 8px)}#joy{bottom:calc(env(safe-area-inset-bottom) + 55px);left:calc(env(safe-area-inset-left) + 10px);width:99px;height:99px}#lift{bottom:calc(env(safe-area-inset-bottom) + 55px);right:calc(env(safe-area-inset-right) + 12px)}.lift{width:45px;height:45px}#bottom{bottom:calc(env(safe-area-inset-bottom) + 4px)}#logo{display:none}#welcome h2{font-size:40px}#welcome p{margin-bottom:8px}.controlsExplain{margin-top:10px}}
   </style>
   <script type="importmap">
     {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.module.js","three/webgpu":"https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.webgpu.js"}}
@@ -75,15 +76,17 @@
   </div>
   <div id="joy"><div id="stick"></div></div>
   <div id="lift"><button class="lift" id="ascend" aria-label="Fly upward">↑<span>RISE</span></button><button class="lift" id="descend" aria-label="Fly downward">↓<span>FALL</span></button></div>
+  <div id="baseInfo"></div>
+  <div id="landmarkLabel" hidden>APOLLO 15 · FALCON<small>Descent stage · simplified reconstruction</small></div>
   <div id="skyInfo" aria-live="off"></div>
   <div id="hint">DRAG THE VIEW TO LOOK AROUND</div>
   <div id="bottom">
     <button class="pill" id="cruise" aria-pressed="false">BOOST ×3</button>
     <button class="pill" id="quality" aria-pressed="false">DETAIL: HIGH</button>
     <button class="pill" id="settings" aria-expanded="false">SETTINGS</button>
-    <button class="pill" id="reset">↺ RESET</button>
+    <button class="pill" id="reset" title="Return to Apollo 15 landing site">↺ BASE</button>
   </div>
-  <div id="flightSettings" class="panel" hidden><label>Look sensitivity <input id="sensitivity" type="range" min="0.3" max="2" step="0.1" value="1"></label><label><input id="gravity" type="checkbox"> Lunar gravity (1.62 m/s²)</label><label>View distance <select id="viewRange"><option value="20">20 km</option><option value="35" selected>35 km</option><option value="50">50 km</option></select></label><label>Sky date &amp; time (UTC)<input id="skyDate" type="datetime-local" min="1900-01-01T00:00" max="2100-12-31T23:59"></label><label><input id="liveSky" type="checkbox"> Use current date &amp; time</label><label><input id="enhancedStars" type="checkbox"> Show stars in daylight (enhanced)</label><label>Look toward <select id="lookAt"><option value="">Choose a sky object</option><option>Earth</option><option>Sun</option><option>Mercury</option><option>Venus</option><option>Mars</option><option>Jupiter</option><option>Saturn</option><option>Uranus</option><option>Neptune</option></select></label><small id="objectInfo"></small><small>Assisted hover is the default. With gravity on, hold RISE to climb.</small></div>
+  <div id="flightSettings" class="panel" hidden><label>Look sensitivity <input id="sensitivity" type="range" min="0.3" max="2" step="0.1" value="1"></label><label><input id="gravity" type="checkbox"> Lunar gravity (1.62 m/s²)</label><label>View distance <select id="viewRange"><option value="20">20 km</option><option value="35" selected>35 km</option><option value="50">50 km</option></select></label><label>Sky date &amp; time (UTC)<input id="skyDate" type="datetime-local" min="1900-01-01T00:00" max="2100-12-31T23:59"></label><label><input id="liveSky" type="checkbox"> Use current date &amp; time</label><label><input id="enhancedStars" type="checkbox" checked> Enhanced stars in daylight</label><label>Star brightness <input id="starBrightness" type="range" min="0.5" max="2.5" step="0.1" value="1.4"></label><label>Look toward <select id="lookAt"><option value="">Choose a sky object</option><option>Earth</option><option>Sun</option><option>Mercury</option><option>Venus</option><option>Mars</option><option>Jupiter</option><option>Saturn</option><option>Uranus</option><option>Neptune</option></select></label><small id="objectInfo"></small><small>Assisted hover is the default. With gravity on, hold RISE to climb.</small></div>
   <div id="status" role="status" hidden></div>
   <div id="orientation">W A S D TO FLY · MOUSE TO LOOK · Q / E VERTICAL</div>
   <div id="overlay">
@@ -91,7 +94,7 @@
       <div id="logo"></div>
       <div class="kicker">APOLLO 15 · REAL LUNAR ELEVATION</div>
       <h2>SELENE</h2>
-      <p>Explore the Hadley–Apennine region using NASA lunar elevation data. See the mountains around Apollo 15 beneath a sky calculated for your chosen date.</p>
+      <p>Begin beside Falcon’s descent stage at Apollo 15, then explore Hadley–Apennine using NASA elevation data and a date-based sky. Stars are enhanced for easier viewing.</p>
       <div class="controlsExplain">NASA LOLA elevation · source detail about 470 m · decorative rocks</div>
       <div id="loadingText">LOADING APOLLO 15…</div>
       <button id="start" disabled>ENTER SIMULATION</button>

@@ -2,6 +2,7 @@
     import * as THREE from 'three/webgpu';
     import {rnd, noise, fbm, height, sampleSurface, configureTerrain} from './terrain.js';
     import {bodyPosition,starDirection,angularRadius,createSkyTransform,earthAxes} from './sky.js';
+    import {createApollo15Landmark} from './landmark.js';
     const $ = (s) => document.getElementById(s);
     const clamp = THREE.MathUtils.clamp;
     const isTouch = matchMedia('(pointer:coarse)').matches;
@@ -9,11 +10,14 @@
     const forceWebGL = params.get('renderer') === 'webgl';
     let renderer, camera, scene, sun, earth, stars;
     let running = false, lowPower = isTouch, boosting = false, ascend = false, descend = false;
-    let yaw = 0, pitch = -0.18, targetYaw=0, targetPitch=-.18, cameraSpeed = 62;
+    let yaw = 0, pitch = -Math.atan2(16,42), targetYaw=0, targetPitch=-Math.atan2(16,42), cameraSpeed = 62;
     let sensitivity=1, lunarGravity=false, paused=false, recoveryRequired=false, resetInput=()=>{};
     let lastFrame = performance.now(), lastStats = 0;
     const key = {}, move = {x:0,y:0}, tiles = new Map();
-    const startPoint = new THREE.Vector3(0,0,170);
+    const startPoint = new THREE.Vector3(0,18,42);
+    const startPitch=-Math.atan2(16,42);
+    let brightStars,brightStarIndices=[],starBrightness=1.4;
+    const landmarkProjection=new THREE.Vector3();
     const TILE = 700, RANGE = 3, TWO_PI = Math.PI*2;
     let tileOriginX = 99999, tileOriginZ = 99999;
     const forward = new THREE.Vector3(), right = new THREE.Vector3(), desired = new THREE.Vector3();
@@ -32,7 +36,7 @@
       t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;return t;
     }
     let terrainMaterial, horizonMesh, skyObjects=[],starCatalog=[],siteMetadata,skyLastUpdate=0;
-    let simulationDate=new Date('1971-07-30T22:16:00Z'),realTime=false,enhancedStars=false,viewRange=35;
+    let simulationDate=new Date('1971-07-30T22:16:00Z'),realTime=false,enhancedStars=true,viewRange=35;
     const worker=new Worker('./terrain-worker.js',{type:'module'});
     let pending=[],busy=false,jobID=0,activeJob=null,terrainError=false,workerReady=false;
     const segments=()=>lowPower?32:48;
@@ -105,11 +109,17 @@
       const response=await fetch('./stars.json');if(!response.ok)throw new Error('Star catalogue unavailable');starCatalog=await response.json();
       const a=new Float32Array(starCatalog.length*3),col=new Float32Array(a.length);
       for(let i=0;i<starCatalog.length;i++){
-        const bv=starCatalog[i][5],brightness=Math.max(.12,Math.min(1,Math.pow(10,-.18*(starCatalog[i][4]+1))));
+        const bv=starCatalog[i][5],brightness=Math.max(.3,Math.min(1,Math.pow(10,-.10*(starCatalog[i][4]+1))));
         const colour=new THREE.Color().setRGB(bv<.3?.7:1,bv>1?.7:.9,bv>1?.5:1).multiplyScalar(brightness);col.set([colour.r,colour.g,colour.b],i*3);
       }
       const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(a,3));g.setAttribute('color',new THREE.BufferAttribute(col,3));
-      stars=new THREE.Points(g,new THREE.PointsMaterial({vertexColors:true,size:1.6,sizeAttenuation:false,transparent:true,depthWrite:false}));stars.frustumCulled=false;scene.add(stars);
+      const starMaterial=new THREE.PointsMaterial({vertexColors:true,size:2.4,sizeAttenuation:false,transparent:true,depthWrite:false,toneMapped:false});starMaterial.color.setScalar(starBrightness);
+      stars=new THREE.Points(g,starMaterial);stars.frustumCulled=false;scene.add(stars);
+      brightStarIndices=starCatalog.map((star,index)=>star[4]<2.5?index:-1).filter(index=>index>=0);
+      const brightGeometry=new THREE.BufferGeometry();brightGeometry.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(brightStarIndices.length*3),3));
+      brightGeometry.setAttribute('color',new THREE.Float32BufferAttribute(brightStarIndices.flatMap(i=>Array.from(col.subarray(i*3,i*3+3))),3));
+      const brightMaterial=starMaterial.clone();brightMaterial.size=3.8;
+      brightStars=new THREE.Points(brightGeometry,brightMaterial);brightStars.frustumCulled=false;scene.add(brightStars);
       for(const [name,colour,size] of [['Mercury',0xc4b6a1,2],['Venus',0xffefd0,3],['Mars',0xf1a070,2],['Jupiter',0xf6dfb3,2.8],['Saturn',0xe5d9af,2],['Uranus',0xa2d8dd,1.2],['Neptune',0x829fdb,1]]){
         const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute([0,0,0],3));
         const mesh=new THREE.Points(geometry,new THREE.PointsMaterial({color:colour,size,sizeAttenuation:false,transparent:true,depthWrite:false}));scene.add(mesh);skyObjects.push({name,mesh});
@@ -130,12 +140,13 @@
       const axes=earthAxes(date,x,z);earth.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(...['x','y','z'].map(a=>new THREE.Vector3().fromArray(axes[a]))));
       const positions=stars.geometry.getAttribute('position'),transform=createSkyTransform(date,x,z);
       for(let i=0;i<starCatalog.length;i++){const direction=starDirection(starCatalog[i],date,x,z,transform);positions.setXYZ(i,...direction.map(a=>a*100000))}positions.needsUpdate=true;
-      const daylight=solar.altitude>0;stars.material.opacity=daylight&&!enhancedStars?0:1;
+      const brightPositions=brightStars.geometry.getAttribute('position');for(let i=0;i<brightStarIndices.length;i++){const k=brightStarIndices[i];brightPositions.setXYZ(i,positions.getX(k),positions.getY(k),positions.getZ(k))}brightPositions.needsUpdate=true;
+      const daylight=solar.altitude>0;stars.material.opacity=daylight&&!enhancedStars?0:1;brightStars.material.opacity=stars.material.opacity;
       for(const body of skyObjects)if(body.name!=='Sun')body.mesh.material.opacity=daylight&&!enhancedStars?0:1;
       sun.intensity=daylight?3:0;
       sun.userData.direction=new THREE.Vector3().fromArray(solar.direction);
-      $('skyInfo').textContent='APOLLO 15 · '+date.toISOString().slice(0,16).replace('T',' ')+' UTC · SUN '+solar.altitude.toFixed(1)+'°';
-      $('hint').textContent=daylight?'NORTH: FORWARD AT RESET · APOLLO 15':'LUNAR NIGHT · CHANGE DATE FOR SUNLIT TERRAIN';
+      $('skyInfo').textContent='APOLLO 15 · '+date.toISOString().slice(0,16).replace('T',' ')+' UTC · SUN '+solar.altitude.toFixed(1)+'°'+(enhancedStars?' · STARS ENHANCED':'');
+      $('hint').textContent=daylight?'DRAG UP TO SEE STARS · ↺ BASE TO RETURN':'LUNAR NIGHT · CHANGE DATE FOR SUNLIT TERRAIN';
     }
     async function createEarth(){
       const texture=await new THREE.TextureLoader().loadAsync('./earth.jpg');texture.colorSpace=THREE.SRGBColorSpace;
@@ -189,6 +200,7 @@
       $('skyDate').onchange=e=>{const date=new Date(e.target.value+'Z');if(!Number.isFinite(date.getTime())||date.getUTCFullYear()<1900||date.getUTCFullYear()>2100)return;simulationDate=date;realTime=false;$('liveSky').checked=false;updateSky(true)};
       $('liveSky').onchange=e=>{realTime=e.target.checked;updateSky(true)};
       $('enhancedStars').onchange=e=>{enhancedStars=e.target.checked;updateSky(true)};
+      $('starBrightness').oninput=e=>{starBrightness=Number(e.target.value);stars.material.color.setScalar(starBrightness);brightStars.material.color.setScalar(starBrightness)};
       $('viewRange').onchange=e=>{viewRange=Number(e.target.value);updateTiles(true)};
       $('lookAt').onchange=e=>{if(!e.target.value)return;const p=bodyPosition(e.target.value,simulationDate,camera.position.x,camera.position.z,camera.position.y+siteMetadata.siteElevationMetres);const [x,y,z]=p.direction;const angle=Math.atan2(-x,-z);targetYaw=yaw+Math.atan2(Math.sin(angle-yaw),Math.cos(angle-yaw));targetPitch=clamp(Math.asin(y),-1.49,1.49);$('objectInfo').textContent=e.target.value+': '+p.altitude.toFixed(1)+'° altitude, '+p.azimuth.toFixed(1)+'° azimuth'+(p.altitude<0?' — below the horizon':'');};
       $('cruise').addEventListener('click',()=>{boosting=!boosting;$('cruise').setAttribute('aria-pressed',String(boosting));$('cruise').textContent=boosting?'BOOST: ON':'BOOST ×3'});
@@ -197,8 +209,8 @@
       $('start').addEventListener('click',()=>{if(!renderer)return;running=true;$('overlay').classList.add('hidden')});
     }
     function resetFlight(){
-      camera.position.set(startPoint.x,height(startPoint.x,startPoint.z)+72,startPoint.z);
-      resetInput();yaw=targetYaw=0;pitch=targetPitch=-.18;moveSmoothed.set(0,0,0);updateTiles();
+      camera.position.set(startPoint.x,height(startPoint.x,startPoint.z)+startPoint.y,startPoint.z);
+      resetInput();yaw=targetYaw=0;pitch=targetPitch=startPitch;moveSmoothed.set(0,0,0);updateTiles();
     }
     function frame(time){
       const dt=Math.min((time-lastFrame)/1000,.045);lastFrame=time;
@@ -236,7 +248,12 @@
       if(camera){
         camera.rotation.set(pitch,yaw,0,'YXZ');
         // Anchor astronomical bodies to the observer, preventing apparent parallax on short flights.
-        stars.position.copy(camera.position);
+        stars.position.copy(camera.position);brightStars.position.copy(camera.position);
+        const distance=Math.hypot(camera.position.x,camera.position.z);
+        $('baseInfo').textContent='APOLLO 15 LANDING SITE · '+(distance<1000?Math.round(distance)+' m':(distance/1000).toFixed(1)+' km')+' · ↺ BASE TO RETURN';
+        landmarkProjection.set(0,height(0,0)+4,0).project(camera);
+        const label=$('landmarkLabel');label.hidden=!running||distance>800||landmarkProjection.z>1||landmarkProjection.z< -1||Math.abs(landmarkProjection.x)>.9||Math.abs(landmarkProjection.y)>.85;
+        label.style.left=((landmarkProjection.x+1)*innerWidth/2)+'px';label.style.top=((-landmarkProjection.y+1)*innerHeight/2)+'px';
         updateSky();
         for(const body of skyObjects)if(body.direction)body.mesh.position.fromArray(body.direction).multiplyScalar(100000).add(camera.position);
         if(earth.userData.direction)earth.position.copy(earth.userData.direction).multiplyScalar(100000).add(camera.position);
@@ -283,8 +300,8 @@
         sun.shadow.normalBias=.035;sun.shadow.bias=-.00015;
         scene.add(sun);scene.add(sun.target);
         terrainMaterial=new THREE.MeshStandardMaterial({map:createDustTexture(),vertexColors:true,roughness:1,metalness:0});
-        camera.position.set(0,height(0,170)+72,170);
-        await createStars();await createEarth();createRocks();updateTiles();
+        camera.position.set(startPoint.x,height(startPoint.x,startPoint.z)+startPoint.y,startPoint.z);
+        await createStars();await createEarth();createRocks();scene.add(createApollo15Landmark(height));updateTiles();
         initControls();configureGraphics();updateSky(true);
         renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();showRecovery('Graphics context lost. Reload to recover.')});
         if(renderer.backend?.device?.lost)renderer.backend.device.lost.then(()=>showRecovery('Graphics device disconnected. Reload to recover.'));

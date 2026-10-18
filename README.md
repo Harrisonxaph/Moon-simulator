@@ -12,7 +12,7 @@ Open http://localhost:8000. The site also works on GitHub Pages or a static Verc
 
 **Phone uploads:** the release ZIP contains all runtime files directly in one folder. Extract it, then upload every file inside that folder to your repository root. Replace files with matching names; do not upload the ZIP itself or an enclosing folder. The required runtime files are:
 
-- `index.html`, `app.js`, `terrain.js`, `terrain-worker.js`, `sky.js`
+- `index.html`, `app.js`, `terrain.js`, `terrain-worker.js`, `sky.js`, `landmark.js`
 - `astronomy.js`, `apollo15.json`, `apollo15.f32`, `stars.json`, `earth.jpg`
 
 Keep `README.md` and `CREDITS.md` too. The scripts and tests are development-only and need not be uploaded for the simulator to work.
@@ -21,12 +21,14 @@ Keep `README.md` and `CREDITS.md` too. The scripts and tests are development-onl
 
 - Phone: joystick to move, drag the scene to look, RISE/FALL for altitude.
 - Desktop: WASD, mouse drag, Q/E or Space for altitude, Shift for boost.
-- BOOST accelerates smoothly to three times cruising speed. RESET returns to the landing site facing north.
-- SETTINGS: look sensitivity, optional lunar gravity, 20/35/50 km view distance, UTC date, current-time sky, daylight star enhancement, and a selector that aims toward celestial objects. Objects below the horizon can be obscured by terrain; the selector reports altitude and azimuth.
+- BOOST accelerates smoothly to three times cruising speed. ↺ BASE returns to the same starting view facing Falcon’s descent stage.
+- SETTINGS: look sensitivity, optional lunar gravity, 20/35/50 km view distance, UTC date, current-time sky, daylight star enhancement, star brightness, and a selector that aims toward celestial objects. Objects below the horizon can be obscured by terrain; the selector reports altitude and azimuth.
 - Touch devices start in ECO, reducing terrain detail, pixel resolution, rocks and shadows. HIGH enables shadows.
 - Leaving the page pauses flight and clears held inputs. Graphics failures offer a reload recovery action.
 
 ## Apollo 15 terrain
+
+Every fresh simulation starts about 42 m south of a simplified Falcon descent-stage landmark, facing it from 18 m above the ground. ↺ BASE restores that view; it retains your sky/settings preferences. The descent stage is a lightweight reconstruction, not a surveyed mesh; no ascent stage is shown because it left the Moon. A persistent base-distance readout helps you find your way home.
 
 The origin is the Apollo 15 landing site: **26.1322° N, 3.6339° E**. NASA/LRO/LOLA elevation defines the regional landscape, not procedural crater guesses. Native source sampling is about 474 m north/south and 426 m east/west here, resampled into a compact 500 m grid spanning 128 km square. The mountain relief is real; individual rocks/dust are decorative. Small landing-site features and detailed Hadley Rille walls cannot be resolved by this dataset.
 
@@ -36,7 +38,7 @@ Detailed worker-generated tiles cover the nearby flight area; one coarse terrain
 
 The initial date is Apollo 15's landing, **1971-07-30 22:16 UTC**, for a sunlit starting scene. Change the date or enable current time; a real lunar night may be dark. About 5,000 catalogue stars retain their real relative positions, colours and approximate brightness. Proper motion and lunar rotation are applied. Sun, Earth and seven planets use Astronomy Engine vectors transformed into the lunar observer's horizon frame. The Sun illuminates the terrain from its calculated direction; Sun/Earth angular sizes are calculated. Earth uses a static Blue Marble texture and calculated axial orientation.
 
-This is an educational approximation, not navigation or observatory software. Planet brightness/colours are illustrative; no resolved planetary detail or dynamic weather is simulated. Daylight stars are suppressed unless enhanced visibility is explicitly enabled. Recommended dates: 1900–2100. See [CREDITS.md](CREDITS.md) for sources, licenses and accuracy limits.
+This is an educational approximation, not navigation or observatory software. Planet brightness/colours are illustrative; no resolved planetary detail or dynamic weather is simulated. Enhanced star visibility is now enabled by default, with larger points, extra emphasis on bright stars, and a brightness slider. Real catalogue positions and colour ordering remain unchanged. The HUD explicitly labels this display enhancement. Turn off enhanced stars to suppress stars in daylight; this better approximates a camera exposed for sunlit terrain. Recommended dates: 1900–2100. See [CREDITS.md](CREDITS.md) for sources, licenses and accuracy limits.
 
 ## Code map
 
@@ -44,6 +46,7 @@ This is an educational approximation, not navigation or observatory software. Pl
 - `app.js`: renderer, controls, streaming and sky display.
 - `terrain.js`: elevation sampling, geometry and collision interpolation.
 - `terrain-worker.js`: background geometry generation.
+- `landmark.js`: simplified Falcon descent-stage reconstruction.
 - `sky.js`: lunar orientation, observer frame and astronomical transforms.
 - `astronomy.js`: vendored Astronomy Engine 2.1.19, MIT.
 - `scripts/prepare-data.py`: regenerate the elevation extract/star catalogue (Python + numpy + Pillow, network required).
