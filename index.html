@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#090b0e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>SELENE / Lunar Flight — WebGPU Moon Explorer</title>
+  <style>
+    :root { color-scheme: dark; --cream:#edece8; --muted:#abb0b4; --glass:rgba(14,19,23,.76); --edge:rgba(233,236,237,.16); --accent:#e6bd7d; }
+    * {box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{height:100%;width:100%;margin:0;background:#020305;overflow:hidden;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+    canvas#scene{position:absolute;inset:0;display:block;width:100%;height:100%;touch-action:none}
+    #vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 40%,transparent 44%,rgba(0,0,0,.27) 100%)}
+    .panel{background:var(--glass);border:1px solid var(--edge);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:0 12px 45px rgba(0,0,0,.22)}
+    #top{position:absolute;top:calc(env(safe-area-inset-top) + 14px);left:calc(env(safe-area-inset-left) + 16px);right:calc(env(safe-area-inset-right) + 16px);z-index:15;display:flex;gap:12px;justify-content:space-between;align-items:flex-start;pointer-events:none}
+    #brand{padding:12px 14px;border-radius:13px;min-width:198px}
+    #brand .eyebrow{font-weight:700;font-size:10px;letter-spacing:3px;color:var(--accent)}
+    #brand h1{font-size:19px;line-height:1;margin:5px 0 6px;font-weight:550;letter-spacing:1px}
+    #brand small{font-size:10px;color:var(--muted);letter-spacing:1px}
+    #stats{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end;max-width:62vw}
+    .stat{min-width:80px;padding:10px 12px;border-radius:12px;text-align:left}
+    .stat b{font-size:14px;font-weight:650;display:block;font-variant-numeric:tabular-nums}
+    .stat span{display:block;font-size:9px;letter-spacing:1.1px;color:var(--muted);margin-top:3px}
+    #bottom{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 17px);left:50%;transform:translateX(-50%);z-index:14;display:flex;align-items:center;gap:7px;pointer-events:auto}
+    .pill,.action{background:rgba(19,24,28,.83);color:var(--cream);border:1px solid rgba(240,240,240,.23);border-radius:99px;padding:11px 14px;font:600 11px system-ui;letter-spacing:.4px;cursor:pointer;touch-action:manipulation;white-space:nowrap}
+    .pill[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
+    .action:active,.pill:active{background:rgba(91,92,90,.7)}
+    #joy{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 69px);left:calc(env(safe-area-inset-left) + 22px);width:128px;height:128px;border:1.5px solid rgba(232,232,227,.26);border-radius:50%;z-index:16;background:radial-gradient(circle,rgba(254,254,254,.05),rgba(38,43,46,.13));touch-action:none;display:none}
+    #joy:before,#joy:after{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;background:rgba(220,220,220,.11)}
+    #joy:before{width:1px;height:90%}#joy:after{width:90%;height:1px}
+    #stick{position:absolute;top:50%;left:50%;width:56px;height:56px;transform:translate(-50%,-50%);border-radius:50%;border:1px solid rgba(250,250,245,.44);background:rgba(188,191,190,.24);box-shadow:0 0 30px rgba(255,255,255,.06);pointer-events:none}
+    #lift{position:absolute;right:calc(env(safe-area-inset-right) + 20px);bottom:calc(env(safe-area-inset-bottom) + 75px);display:none;flex-direction:column;gap:10px;z-index:16}
+    .lift{width:57px;height:57px;border-radius:16px;border:1px solid rgba(249,249,247,.26);background:rgba(20,25,29,.7);color:#f2efeb;font-size:23px;touch-action:none;cursor:pointer}
+    .lift span{display:block;font-size:8px;letter-spacing:1px;margin-top:-1px;color:#b6babe}
+    #hint{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 162px);left:50%;transform:translateX(-50%);pointer-events:none;z-index:10;color:rgba(242,243,244,.57);font-size:10px;letter-spacing:1.4px;text-align:center;white-space:nowrap;text-shadow:0 2px 10px #000}
+    #reticle{position:absolute;left:50%;top:50%;width:20px;height:20px;transform:translate(-50%,-50%);pointer-events:none;z-index:8;opacity:.72}
+    #reticle:before,#reticle:after{content:'';position:absolute;background:rgba(250,250,250,.6)}
+    #reticle:before{top:9px;width:20px;height:1px}#reticle:after{left:9px;height:20px;width:1px}
+    #orientation{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 23px);right:calc(env(safe-area-inset-right) + 20px);color:#939a9d;font-size:10px;letter-spacing:1px;z-index:10;pointer-events:none}
+    #overlay{position:absolute;inset:0;z-index:30;display:flex;justify-content:center;align-items:center;background:radial-gradient(ellipse at 50% 36%,rgba(27,32,41,.92),rgba(3,4,6,.97) 73%);padding:24px;transition:opacity .45s ease}
+    #overlay.hidden{opacity:0;pointer-events:none}
+    #welcome{width:min(94vw,560px);text-align:center;color:#f6f5f3}
+    #logo{width:91px;height:91px;border-radius:50%;margin:0 auto 26px;background:radial-gradient(circle at 35% 30%,#c1c2c4,#555d62 54%,#171c23 75%,#0b0d12 100%);box-shadow:inset -13px -6px 18px #0d111a,0 0 65px rgba(193,204,218,.11);position:relative}
+    #logo:before{content:'';position:absolute;width:21px;height:21px;border-radius:50%;background:rgba(28,31,35,.25);top:26%;left:27%;box-shadow:34px 20px 0 5px rgba(32,34,38,.2),-1px 32px 0 2px rgba(24,26,32,.18)}
+    .kicker{color:var(--accent);font-weight:700;letter-spacing:4px;font-size:11px}
+    #welcome h2{font-size:clamp(41px,10vw,78px);font-weight:250;letter-spacing:7px;margin:9px 0 8px}
+    #welcome p{color:#b4b8be;font-size:14px;line-height:1.65;max-width:430px;margin:0 auto 20px}
+    #loadingText{font-size:11px;letter-spacing:2px;color:#b1b4b8;min-height:22px;margin:12px}
+    #start{padding:15px 31px;color:#11151a;background:#eed0a5;border:0;border-radius:50px;font-size:12px;letter-spacing:2px;font-weight:800;cursor:pointer;opacity:.5}
+    #start:disabled{cursor:wait}
+    .controlsExplain{color:#92989d;font-size:11px;line-height:1.6;margin-top:25px}
+    #error{display:none;margin:12px auto 0;color:#f2c3b5;font-size:12px;max-width:380px;line-height:1.5}
+    @media(pointer:coarse){#joy{display:block}#lift{display:flex}#bottom{bottom:calc(env(safe-area-inset-bottom) + 19px)}#orientation{display:none}}
+    @media(max-width:650px){#brand{min-width:142px;padding:9px 10px}#brand h1{font-size:16px}#brand small{font-size:8px;letter-spacing:.4px}.stat{min-width:60px;padding:8px 9px}.stat b{font-size:12px}.stat span{font-size:8px}#stats{max-width:52vw}#stats .stat:nth-child(3){display:none}#bottom{gap:5px}.pill,.action{font-size:10px;padding:9px 11px}#hint{bottom:calc(env(safe-area-inset-bottom) + 209px);font-size:9px}#joy{width:116px;height:116px;bottom:calc(env(safe-area-inset-bottom) + 80px)}#lift{bottom:calc(env(safe-area-inset-bottom) + 87px)}#welcome h2{letter-spacing:4px}}
+    @media(max-height:480px){#hint{display:none}#top{top:8px}#joy{bottom:40px;left:10px;width:99px;height:99px}#lift{bottom:40px;right:12px}.lift{width:45px;height:45px}#bottom{bottom:4px}}
+  </style>
+  <script type="importmap">
+    {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.module.js","three/webgpu":"https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.webgpu.js"}}
+  </script>
+</head>
+<body>
+  <div id="vignette"></div>
+  <div id="reticle"></div>
+  <div id="top">
+    <div class="panel" id="brand"><div class="eyebrow">SELENE / 02</div><h1>LUNAR FLIGHT</h1><small>PROCEDURAL MOON EXPLORER</small></div>
+    <div id="stats">
+      <div class="stat panel"><b id="altitude">—</b><span>ALTITUDE / M</span></div>
+      <div class="stat panel"><b id="speed">—</b><span>FLIGHT SPEED</span></div>
+      <div class="stat panel"><b id="backend">—</b><span>RENDERER</span></div>
+    </div>
+  </div>
+  <div id="joy"><div id="stick"></div></div>
+  <div id="lift"><button class="lift" id="ascend" aria-label="Fly upward">↑<span>RISE</span></button><button class="lift" id="descend" aria-label="Fly downward">↓<span>FALL</span></button></div>
+  <div id="hint">DRAG THE VIEW TO LOOK AROUND</div>
+  <div id="bottom">
+    <button class="pill" id="cruise" aria-pressed="false">BOOST ×3</button>
+    <button class="pill" id="quality" aria-pressed="false">DETAIL: HIGH</button>
+    <button class="pill" id="reset">↺ RESET</button>
+  </div>
+  <div id="orientation">W A S D TO FLY · MOUSE TO LOOK · Q / E VERTICAL</div>
+  <div id="overlay">
+    <div id="welcome">
+      <div id="logo"></div>
+      <div class="kicker">IMMERSIVE WEBGPU EXPERIENCE</div>
+      <h2>SELENE</h2>
+      <p>Drift above an infinite, crater-scarred lunar wilderness. Explore immense impact basins, rugged highlands, scattered boulders and the Earth rising over the horizon.</p>
+      <div id="loadingText">GENERATING LUNAR TERRAIN…</div>
+      <button id="start" disabled>ENTER SIMULATION</button>
+      <div id="error"></div>
+      <div class="controlsExplain">PHONE: left thumb to fly · drag anywhere else to look · arrows to rise or fall<br>DESKTOP: WASD + mouse drag · Q/E to descend/ascend · Shift to boost</div>
+    </div>
+  </div>
+  <script type="module">
+    import * as THREE from 'three/webgpu';
+    const $ = (s) => document.getElementById(s);
+    const clamp = THREE.MathUtils.clamp;
+    const isTouch = matchMedia('(pointer:coarse)').matches;
+    const params = new URLSearchParams(location.search);
+    const forceWebGL = params.get('renderer') === 'webgl';
+    let renderer, camera, scene, sun, earth, stars, rockMesh;
+    let running = false, lowPower = false, boosting = false, ascend = false, descend = false;
+    let yaw = 0, pitch = -0.18, cameraSpeed = 62;
+    let lastFrame = performance.now(), lastStats = 0;
+    const key = {}, move = {x:0,y:0}, tiles = new Map();
+    const startPoint = new THREE.Vector3(0,0,170);
+    const TILE = 700, RANGE = 2, TWO_PI = Math.PI*2;
+    let tileOriginX = 99999, tileOriginZ = 99999;
+    const forward = new THREE.Vector3(), right = new THREE.Vector3(), desired = new THREE.Vector3();
+    const moveSmoothed = new THREE.Vector3();
+
+    function fract(x){return x-Math.floor(x)}
+    function rnd(x,z){return fract(Math.sin(x*127.137+z*311.721)*43758.5453123)}
+    function noise(x,z){
+      const ix=Math.floor(x), iz=Math.floor(z), tx=x-ix, tz=z-iz;
+      const u=tx*tx*(3-2*tx),v=tz*tz*(3-2*tz);
+      const a=rnd(ix,iz),b=rnd(ix+1,iz),c=rnd(ix,iz+1),d=rnd(ix+1,iz+1);
+      return (a+(b-a)*u)*(1-v)+(c+(d-c)*u)*v;
+    }
+    function fbm(x,z,n){let s=0,a=.5,f=1;for(let i=0;i<n;i++){s+=noise(x*f,z*f)*a;a*=.5;f*=2.02}return s}
+    // Deterministic impact basins. Sampling a small neighbouring grid avoids costly crater lists.
+    function impacts(x,z,cell,salt){
+      const gx=Math.floor(x/cell),gz=Math.floor(z/cell);let elev=0;
+      for(let iz=gz-1;iz<=gz+1;iz++) for(let ix=gx-1;ix<=gx+1;ix++){
+        const seed=rnd(ix*2.31+salt,iz*7.13-salt);
+        if(seed < .25)continue;
+        const px=(ix+.13+.73*rnd(ix+salt*3,iz*.87))*cell;
+        const pz=(iz+.13+.73*rnd(iz-salt*7,ix*.91))*cell;
+        const radius=cell*(.12+.25*rnd(ix+salt*5,iz+salt*9));
+        const dx=x-px,dz=z-pz;
+        if(Math.abs(dx)>radius*1.5||Math.abs(dz)>radius*1.5)continue;
+        const t=Math.sqrt(dx*dx+dz*dz)/radius;
+        if(t>1.5)continue;
+        const depth=radius*(.105+.045*rnd(ix+salt*2,iz-salt*4));
+        if(t<1){const q=1-t*t;elev-=depth*q*q}
+        const ring=(t-1)/.18;
+        elev+=depth*.39*Math.exp(-ring*ring);
+        const ejecta=(t-1.23)/.24;
+        elev+=depth*.08*Math.exp(-ejecta*ejecta);
+      }
+      return elev;
+    }
+    function height(x,z){
+      const continental=(fbm(x*.00034,z*.00034,5)-.47)*135;
+      const peaks=(1-Math.abs(noise(x*.00145,z*.00145)*2-1));
+      const mountain=peaks*peaks*47;
+      const rolling=(fbm(x*.0039,z*.0039,4)-.46)*24;
+      const regolith=(fbm(x*.027,z*.027,3)-.46)*3.2;
+      return continental+mountain+rolling+regolith+impacts(x,z,760,7)+impacts(x,z,195,23)+impacts(x,z,57,51);
+    }
+    function createDustTexture(){
+      const c=document.createElement('canvas');c.width=c.height=256;
+      const ctx=c.getContext('2d'),img=ctx.createImageData(256,256);
+      for(let y=0;y<256;y++)for(let x=0;x<256;x++){
+        const i=(y*256+x)*4;
+        const n=noise(x*.063,y*.063)*25+noise(x*.22,y*.22)*15+(rnd(x,y)-.5)*25;
+        const v=Math.round(clamp(184+n,115,238));img.data[i]=v;img.data[i+1]=v;img.data[i+2]=Math.min(255,v+2);img.data[i+3]=255;
+      }
+      ctx.putImageData(img,0,0);
+      const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(8,8);
+      t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;return t;
+    }
+    let terrainMaterial;
+    function createTile(tx,tz,segments){
+      const g=new THREE.PlaneGeometry(TILE,TILE,segments,segments);
+      g.rotateX(-Math.PI/2);
+      const p=g.getAttribute('position'),colors=new Float32Array(p.count*3);
+      for(let i=0;i<p.count;i++){
+        const x=p.getX(i)+tx*TILE,z=p.getZ(i)+tz*TILE;
+        const h=height(x,z);
+        p.setY(i,h);
+        const rock=noise(x*.0043+30,z*.0043-9);
+        const weather=noise(x*.023,z*.023);
+        const tint=clamp(.76 + rock*.20 + (weather-.5)*.16 + Math.max(0,h-60)*.00055,.62,1.05);
+        colors[i*3]=tint*.97;colors[i*3+1]=tint*.98;colors[i*3+2]=tint;
+      }
+      g.setAttribute('color',new THREE.BufferAttribute(colors,3));
+      p.needsUpdate=true;g.computeVertexNormals();g.computeBoundingSphere();
+      const m=new THREE.Mesh(g,terrainMaterial);
+      m.position.set(tx*TILE,0,tz*TILE);
+      m.receiveShadow=true;m.castShadow=segments>=50;
+      scene.add(m);return {mesh:m,segments};
+    }
+    function updateTiles(){
+      const tx=Math.round(camera.position.x/TILE),tz=Math.round(camera.position.z/TILE);
+      if(tx===tileOriginX&&tz===tileOriginZ)return;
+      tileOriginX=tx;tileOriginZ=tz;
+      const wanted=new Set();
+      for(let dz=-RANGE;dz<=RANGE;dz++)for(let dx=-RANGE;dx<=RANGE;dx++){
+        const cx=tx+dx,cz=tz+dz,id=cx+','+cz;
+        wanted.add(id);
+        const segments=Math.max(Math.abs(dx),Math.abs(dz))<=1?(isTouch?49:67):17;
+        const old=tiles.get(id);
+        if(old&&old.segments===segments)continue;
+        if(old){scene.remove(old.mesh);old.mesh.geometry.dispose()}
+        tiles.set(id,createTile(cx,cz,segments));
+      }
+      for(const [id,tile] of tiles){if(!wanted.has(id)){
+        scene.remove(tile.mesh);tile.mesh.geometry.dispose();tiles.delete(id);
+      }}
+      placeRocks();
+    }
+    function createRocks(){
+      const geom=new THREE.DodecahedronGeometry(1,1);
+      const mat=new THREE.MeshStandardMaterial({color:0x858787,roughness:1,metalness:0});
+      rockMesh=new THREE.InstancedMesh(geom,mat,isTouch?410:710);
+      rockMesh.receiveShadow=true;rockMesh.frustumCulled=false;
+      scene.add(rockMesh);
+    }
+    function placeRocks(){
+      const dummy=new THREE.Object3D(),col=new THREE.Color();
+      const n=rockMesh.count;
+      for(let i=0;i<n;i++){
+        const gx=tileOriginX*TILE, gz=tileOriginZ*TILE;
+        const ox=(rnd(i*1.73+19,31)-.5)*TILE*4.75;
+        const oz=(rnd(i*3.19+77,51)-.5)*TILE*4.75;
+        const x=gx+ox,z=gz+oz;
+        const s=.5+Math.pow(rnd(i+91,12),5)*8.5;
+        dummy.position.set(x,height(x,z)+s*.23,z);
+        dummy.rotation.set(rnd(i,3)*3,rnd(i,7)*6.283,rnd(i,11)*3);
+        dummy.scale.set(s*(.75+rnd(i,14)*.7),s*(.35+rnd(i,15)*.7),s*(.75+rnd(i,16)*.7));
+        dummy.updateMatrix();rockMesh.setMatrixAt(i,dummy.matrix);
+        const tint=.62+rnd(i,77)*.34;col.setRGB(tint,tint*1.005,tint*1.015);
+        rockMesh.setColorAt(i,col);
+      }
+      rockMesh.instanceMatrix.needsUpdate=true;
+      if(rockMesh.instanceColor)rockMesh.instanceColor.needsUpdate=true;
+    }
+    function createStars(){
+      let seed=8319;function sr(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}
+      const count=isTouch?1900:3100,a=new Float32Array(count*3);
+      for(let i=0;i<count;i++){
+        const u=sr()*2-1,t=sr()*TWO_PI,r=7000+sr()*2000,k=Math.sqrt(1-u*u);
+        a[i*3]=r*k*Math.cos(t);a[i*3+1]=r*u;a[i*3+2]=r*k*Math.sin(t);
+      }
+      const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(a,3));
+      const m=new THREE.PointsMaterial({color:0xd5def5,size:isTouch?1:1.5,sizeAttenuation:false,transparent:true,opacity:.82,depthWrite:false});
+      stars=new THREE.Points(g,m);stars.frustumCulled=false;scene.add(stars);
+    }
+    function createEarth(){
+      const canvas=document.createElement('canvas');canvas.width=512;canvas.height=256;
+      const ctx=canvas.getContext('2d'),im=ctx.createImageData(512,256);
+      for(let y=0;y<256;y++)for(let x=0;x<512;x++){
+        const lon=x/512*TWO_PI,lat=(y/255-.5)*Math.PI;
+        const n=fbm(x*.008,y*.014,5), cloud=fbm(x*.028+113,y*.036-27,3);
+        const land=(n>.48 && Math.abs(lat)<1.2),ice=Math.abs(lat)>1.29;
+        const i=(y*512+x)*4;let r,g,b;
+        if(ice){r=195;g=210;b=218}else if(land){r=75+n*61;g=93+n*78;b=58+n*29}
+        else {r=19+n*23;g=64+n*43;b=123+n*77}
+        if(cloud>.57){const a=Math.min(.8,(cloud-.57)*3.7);r=r*(1-a)+225*a;g=g*(1-a)+229*a;b=b*(1-a)+232*a}
+        im.data[i]=r;im.data[i+1]=g;im.data[i+2]=b;im.data[i+3]=255;
+      }
+      ctx.putImageData(im,0,0);
+      const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
+      const sphere=new THREE.SphereGeometry(145,40,28);
+      earth=new THREE.Mesh(sphere,new THREE.MeshStandardMaterial({map:tex,roughness:1,metalness:0}));
+      earth.position.set(1050,1380,-6300);scene.add(earth);
+    }
+    function configureGraphics(){
+      renderer.setPixelRatio(lowPower?1:Math.min(devicePixelRatio,isTouch?1.35:1.75));
+      renderer.setSize(innerWidth,innerHeight);
+      sun.castShadow=!lowPower;
+      $('quality').textContent=lowPower?'DETAIL: ECO':'DETAIL: HIGH';
+      $('quality').setAttribute('aria-pressed',String(lowPower));
+    }
+    function initControls(){
+      const joy=$('joy'),knob=$('stick');let joyID=null;
+      function handleJoy(e){
+        const rect=joy.getBoundingClientRect(),cx=rect.left+rect.width/2,cy=rect.top+rect.height/2;
+        const radius=rect.width*.33,dx=e.clientX-cx,dy=e.clientY-cy;
+        const m=Math.min(1,Math.hypot(dx,dy)/radius),a=Math.atan2(dy,dx);
+        move.x=Math.cos(a)*m;move.y=-Math.sin(a)*m;
+        knob.style.left='calc(50% + '+(move.x*radius)+'px)';
+        knob.style.top='calc(50% - '+(move.y*radius)+'px)';
+      }
+      joy.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();if(joyID!==null)return;joyID=e.pointerId;joy.setPointerCapture(joyID);handleJoy(e)});
+      joy.addEventListener('pointermove',e=>{if(e.pointerId===joyID){e.preventDefault();handleJoy(e)}});
+      function endJoy(e){if(e.pointerId!==joyID)return;joyID=null;move.x=move.y=0;knob.style.left='50%';knob.style.top='50%'}
+      joy.addEventListener('pointerup',endJoy);joy.addEventListener('pointercancel',endJoy);
+      const bindHold=(id,change)=>{const el=$(id);
+        el.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();el.setPointerCapture(e.pointerId);change(true)});
+        el.addEventListener('pointerup',()=>change(false));el.addEventListener('pointercancel',()=>change(false));el.addEventListener('lostpointercapture',()=>change(false));
+      };
+      bindHold('ascend',v=>ascend=v);bindHold('descend',v=>descend=v);
+      let lookID=null,px=0,py=0;
+      renderer.domElement.addEventListener('pointerdown',e=>{if(lookID!==null||!running)return;lookID=e.pointerId;px=e.clientX;py=e.clientY;renderer.domElement.setPointerCapture(lookID)});
+      renderer.domElement.addEventListener('pointermove',e=>{if(e.pointerId!==lookID||!running)return;
+        const dx=e.clientX-px,dy=e.clientY-py;px=e.clientX;py=e.clientY;
+        yaw-=dx*(isTouch?.0042:.0028);pitch-=dy*(isTouch?.0042:.0028);
+        pitch=clamp(pitch,-1.49,1.49);
+      });
+      const endLook=e=>{if(e.pointerId===lookID)lookID=null};
+      renderer.domElement.addEventListener('pointerup',endLook);renderer.domElement.addEventListener('pointercancel',endLook);
+      addEventListener('keydown',e=>{key[e.code]=true;if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault()});
+      addEventListener('keyup',e=>{key[e.code]=false});
+      addEventListener('blur',()=>{for(const name in key)key[name]=false;move.x=move.y=0;ascend=descend=false});
+      $('cruise').addEventListener('click',()=>{boosting=!boosting;$('cruise').setAttribute('aria-pressed',String(boosting));$('cruise').textContent=boosting?'BOOST: ON':'BOOST ×3'});
+      $('quality').addEventListener('click',()=>{lowPower=!lowPower;configureGraphics()});
+      $('reset').addEventListener('click',()=>resetFlight());
+      $('start').addEventListener('click',()=>{if(!renderer)return;running=true;$('overlay').classList.add('hidden')});
+    }
+    function resetFlight(){
+      camera.position.set(startPoint.x,height(startPoint.x,startPoint.z)+72,startPoint.z);
+      yaw=0;pitch=-.18;moveSmoothed.set(0,0,0);updateTiles();
+    }
+    function frame(time){
+      const dt=Math.min((time-lastFrame)/1000,.045);lastFrame=time;
+      if(running){
+        camera.rotation.set(pitch,yaw,0,'YXZ');
+        const mx=clamp(move.x+Number(!!key.KeyD)-Number(!!key.KeyA),-1,1);
+        const my=clamp(move.y+Number(!!key.KeyW)-Number(!!key.KeyS),-1,1);
+        forward.set(-Math.sin(yaw),0,-Math.cos(yaw));right.set(Math.cos(yaw),0,-Math.sin(yaw));
+        desired.set(0,0,0).addScaledVector(forward,my).addScaledVector(right,mx);
+        if(desired.lengthSq()>1)desired.normalize();
+        desired.y=Number(ascend||!!key.KeyE||!!key.Space)-Number(descend||!!key.KeyQ);
+        if(desired.lengthSq()>1)desired.normalize();
+        moveSmoothed.lerp(desired,Math.min(1,dt*7));
+        const boosted=(boosting||!!key.ShiftLeft||!!key.ShiftRight)?3:1;
+        cameraSpeed=62*boosted;
+        camera.position.addScaledVector(moveSmoothed,dt*cameraSpeed);
+        const clearance=height(camera.position.x,camera.position.z)+5;
+        if(camera.position.y<clearance)camera.position.y=clearance;
+        const currTx=Math.round(camera.position.x/TILE),currTz=Math.round(camera.position.z/TILE);
+        if(currTx!==tileOriginX||currTz!==tileOriginZ)updateTiles();
+      }
+      if(camera){
+        camera.rotation.set(pitch,yaw,0,'YXZ');
+        // Anchor astronomical bodies to the observer, preventing apparent parallax on short flights.
+        stars.position.copy(camera.position);
+        earth.position.set(camera.position.x+1050,camera.position.y+1340,camera.position.z-6300);
+        sun.position.set(camera.position.x+1200,camera.position.y+900,camera.position.z-700);
+        sun.target.position.set(camera.position.x,0,camera.position.z);sun.target.updateMatrixWorld();
+      }
+      if(time-lastStats>230){
+        $('altitude').textContent=Math.max(0,Math.round(camera.position.y-height(camera.position.x,camera.position.z))).toLocaleString();
+        $('speed').textContent=Math.round(moveSmoothed.length()*cameraSpeed)+' m/s';
+        lastStats=time;
+      }
+      renderer.render(scene,camera);
+    }
+    async function boot(){
+      try{
+        $('loadingText').textContent='INITIALISING WEBGPU RENDERER…';
+        scene=new THREE.Scene();scene.background=new THREE.Color(0x010205);
+        camera=new THREE.PerspectiveCamera(isTouch?74:70,innerWidth/innerHeight,.5,18000);
+        renderer=new THREE.WebGPURenderer({antialias:true,alpha:false,forceWebGL});
+        renderer.domElement.id='scene';
+        renderer.outputColorSpace=THREE.SRGBColorSpace;
+        renderer.toneMapping=THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure=1.65;
+        document.body.prepend(renderer.domElement);
+        renderer.setPixelRatio(Math.min(devicePixelRatio,isTouch?1.35:1.75));
+        renderer.setSize(innerWidth,innerHeight);
+        await renderer.init();
+        $('backend').textContent=renderer.backend?.isWebGPUBackend?'WebGPU':'WebGL 2';
+        $('loadingText').textContent='SCULPTING CRATERS AND HIGHLANDS…';
+        await new Promise(r=>requestAnimationFrame(r));
+        const ambient=new THREE.AmbientLight(0x8c9db1,.22);scene.add(ambient);
+        sun=new THREE.DirectionalLight(0xfff1dc,3.4);
+        sun.castShadow=true;
+        sun.shadow.mapSize.set(isTouch?1024:2048,isTouch?1024:2048);
+        sun.shadow.camera.left=-1250;sun.shadow.camera.right=1250;
+        sun.shadow.camera.top=1250;sun.shadow.camera.bottom=-1250;
+        sun.shadow.camera.near=.1;sun.shadow.camera.far=5000;
+        sun.shadow.normalBias=.035;sun.shadow.bias=-.00015;
+        scene.add(sun);scene.add(sun.target);
+        terrainMaterial=new THREE.MeshStandardMaterial({map:createDustTexture(),vertexColors:true,roughness:1,metalness:0});
+        camera.position.set(0,height(0,170)+72,170);
+        createStars();createEarth();createRocks();updateTiles();
+        initControls();configureGraphics();
+        addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+        renderer.setAnimationLoop(frame);
+        $('loadingText').textContent='TERRAIN READY · '+(renderer.backend?.isWebGPUBackend?'WEBGPU ACTIVE':'WEBGL2 COMPATIBILITY MODE');
+        const btn=$('start');btn.disabled=false;btn.style.opacity='1';
+      }catch(error){
+        console.error(error);$('loadingText').textContent='COULD NOT START THE SIMULATION';
+        const msg=String(error?.message||error);
+        $('error').style.display='block';$('error').textContent=msg+' — Try current Safari or Chrome, or use a phone that supports WebGL 2.';
+        $('start').style.display='none';
+      }
+    }
+    boot();
+  </script>
+</body>
+</html>
