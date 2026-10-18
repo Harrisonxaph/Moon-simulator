@@ -11,7 +11,7 @@
   <style>
     :root { color-scheme: dark; --cream:#edece8; --muted:#abb0b4; --glass:rgba(14,19,23,.76); --edge:rgba(233,236,237,.16); --accent:#e6bd7d; }
     * {box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-    html,body{height:100%;width:100%;margin:0;background:#020305;overflow:hidden;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+    html,body{height:100%;width:100%;margin:0;background:#020305;overflow:hidden;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;touch-action:manipulation;user-select:none;-webkit-user-select:none}
     canvas#scene{position:absolute;inset:0;display:block;width:100%;height:100%;touch-action:none}
     #vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 40%,transparent 44%,rgba(0,0,0,.27) 100%)}
     .panel{background:var(--glass);border:1px solid var(--edge);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:0 12px 45px rgba(0,0,0,.22)}
@@ -58,6 +58,10 @@
     #baseInfo{position:absolute;top:calc(env(safe-area-inset-top) + 142px);left:calc(env(safe-area-inset-left) + 16px);z-index:10;color:var(--accent);font-size:9px;letter-spacing:.4px;pointer-events:none}#landmarkLabel{position:absolute;z-index:9;transform:translate(-50%,-100%);padding:6px 9px;border-radius:6px;background:rgba(0,0,0,.65);color:#eed0a5;font-size:11px;text-align:center;pointer-events:none;white-space:nowrap}#landmarkLabel small{display:block;font-size:8px;color:#ccc;margin-top:3px}
     #skyInfo{position:absolute;top:calc(env(safe-area-inset-top) + 114px);left:calc(env(safe-area-inset-left) + 16px);right:16px;z-index:10;color:#c3c5c7;font-size:10px;letter-spacing:.6px;pointer-events:none}#flightSettings input[type=datetime-local],#flightSettings select{display:block;margin-top:6px;max-width:100%;background:#171c22;color:white;border:1px solid #73777b;padding:8px;border-radius:6px}#flightSettings{max-height:calc(100dvh - 90px);overflow:auto;position:absolute;z-index:20;bottom:calc(env(safe-area-inset-bottom) + 65px);left:50%;transform:translateX(-50%);width:min(290px,90vw);padding:16px;border-radius:14px;color:var(--cream);font-size:13px}#flightSettings label{display:block;margin-bottom:12px}#flightSettings small{color:var(--muted)}#status{position:absolute;z-index:40;inset:40% 10% auto;padding:20px;background:#111;color:white;text-align:center;border-radius:12px}.pill{min-height:44px}#overlay{overflow:auto}#welcome{margin:auto}button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
     @media(max-height:480px){#baseInfo{top:calc(env(safe-area-inset-top) + 123px);font-size:8px}#skyInfo{top:calc(env(safe-area-inset-top) + 102px);font-size:9px}#hint{display:none}#top{top:calc(env(safe-area-inset-top) + 8px)}#joy{bottom:calc(env(safe-area-inset-bottom) + 55px);left:calc(env(safe-area-inset-left) + 10px);width:99px;height:99px}#lift{bottom:calc(env(safe-area-inset-bottom) + 55px);right:calc(env(safe-area-inset-right) + 12px)}.lift{width:45px;height:45px}#bottom{bottom:calc(env(safe-area-inset-bottom) + 4px)}#logo{display:none}#welcome h2{font-size:40px}#welcome p{margin-bottom:8px}.controlsExplain{margin-top:10px}}
+
+    #navHUD{position:absolute;top:calc(env(safe-area-inset-top) + 169px);left:calc(env(safe-area-inset-left) + 16px);right:calc(env(safe-area-inset-right) + 16px);z-index:18;display:flex;align-items:center;gap:8px;border-radius:10px;color:var(--cream);padding:3px 5px 3px 10px;font-size:10px}#compass{white-space:nowrap;color:var(--accent);font-variant-numeric:tabular-nums}#waypointReadout{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#navHUD .pill{padding:8px 10px;font-size:9px}
+    #navPanel{position:absolute;z-index:24;left:50%;bottom:calc(env(safe-area-inset-bottom) + 66px);transform:translateX(-50%);width:min(360px,92vw);max-height:calc(100dvh - 100px);overflow:auto;touch-action:pan-y;border-radius:14px;padding:16px;color:var(--cream);font-size:13px}#navPanel select{display:block;width:100%;padding:10px;margin-top:7px;background:#171c22;color:white;border:1px solid #73777b;border-radius:6px;font-size:14px}#navPanel p{line-height:1.5;color:#c2c6cc}#navPanel small{display:block;margin-top:12px;line-height:1.5;color:var(--muted)}#navPanel hr{border:0;border-top:1px solid var(--edge);margin:16px 0}#navPanel h3{font-size:17px;margin:9px 0}.navHeading{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.navHeading button{padding:5px 12px}.navActions{display:flex;flex-wrap:wrap;gap:6px}#missionProgress,#discoveryCount{font-size:10px;letter-spacing:1px;color:var(--accent)}#waypointMarker{position:absolute;z-index:9;transform:translate(-50%,-100%);color:#f3ca88;background:#14181bba;padding:6px 9px;border-radius:7px;font-size:10px;pointer-events:none;white-space:nowrap}#discoveryDialog{position:absolute;inset:0;z-index:40;display:grid;place-items:center;padding:20px;background:#0009;color:var(--cream)}#discoveryDialog[hidden]{display:none}#discoveryDialog>.panel{max-width:380px;max-height:85dvh;overflow:auto;touch-action:pan-y;padding:25px;border-radius:16px}#discoveryDialog h2{font-size:24px;font-weight:500}#discoveryDialog p{font-size:15px;line-height:1.7;color:#c9cdd2}#discoveryDialog button{color:var(--accent)}
+    @media(max-height:480px){#navHUD{top:calc(env(safe-area-inset-top) + 145px);right:auto;width:min(420px,calc(100vw - 32px - env(safe-area-inset-left) - env(safe-area-inset-right)))}}
   </style>
   <script type="importmap">
     {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.module.js","three/webgpu":"https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.webgpu.js"}}
@@ -76,6 +80,18 @@
   </div>
   <div id="joy"><div id="stick"></div></div>
   <div id="lift"><button class="lift" id="ascend" aria-label="Fly upward">↑<span>RISE</span></button><button class="lift" id="descend" aria-label="Fly downward">↓<span>FALL</span></button></div>
+  <div id="navHUD" class="panel"><b id="compass" aria-label="Compass heading">N 000°</b><span id="waypointReadout">↑ FALCON · 42 m</span><button id="navToggle" class="pill" aria-expanded="false" aria-controls="navPanel">EXPLORE</button></div>
+  <section id="navPanel" class="panel" hidden aria-label="Navigation and discoveries">
+    <div class="navHeading"><strong>Explore Apollo 15</strong><button id="closeNavigation" class="pill" aria-label="Close navigation">✕</button></div>
+    <label for="waypointSelect">Waypoint</label><select id="waypointSelect"></select>
+    <p id="waypointBearing"></p><p id="waypointDescription"></p>
+    <button id="faceWaypoint" class="pill">FACE WAYPOINT</button>
+    <hr><div id="missionProgress">0 / 4 DISCOVERIES</div><h3 id="missionTitle">Your Apollo 15 expedition</h3><p id="missionInstruction"></p>
+    <div class="navActions"><button id="missionStart" class="pill">START EXPEDITION</button><button id="trackMission" class="pill" hidden>TRACK GOAL</button></div>
+    <small id="saveNotice"></small><small>Educational waypoints are approximate. This route is not an exact Apollo EVA reconstruction.</small>
+  </section>
+  <div id="waypointMarker" hidden></div>
+  <div id="discoveryDialog" role="dialog" aria-modal="true" aria-labelledby="discoveryTitle" aria-describedby="discoveryFact" hidden><div class="panel"><div id="discoveryCount"></div><h2 id="discoveryTitle"></h2><p id="discoveryFact"></p><button id="continueMission" class="pill">NEXT DISCOVERY</button></div></div>
   <div id="baseInfo"></div>
   <div id="landmarkLabel" hidden>APOLLO 15 · FALCON<small>Descent stage · simplified reconstruction</small></div>
   <div id="skyInfo" aria-live="off"></div>
@@ -94,8 +110,8 @@
       <div id="logo"></div>
       <div class="kicker">APOLLO 15 · REAL LUNAR ELEVATION</div>
       <h2>SELENE</h2>
-      <p>Begin beside Falcon’s descent stage at Apollo 15, then explore Hadley–Apennine using NASA elevation data and a date-based sky. Stars are enhanced for easier viewing.</p>
-      <div class="controlsExplain">NASA LOLA elevation · source detail about 470 m · decorative rocks</div>
+      <p>Begin beside Falcon’s descent stage at Apollo 15, then explore Hadley–Apennine using NASA elevation data and a date-based sky. Follow the compass, visit landmarks, and unlock four discoveries. Stars are enhanced for easier viewing.</p>
+      <div class="controlsExplain">NASA/JAXA terrain · local detail about 60 m · decorative rocks</div>
       <div id="loadingText">LOADING APOLLO 15…</div>
       <button id="start" disabled>ENTER SIMULATION</button>
       <div id="error"></div>

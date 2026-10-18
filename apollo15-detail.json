@@ -1,0 +1,16 @@
+{
+  "name": "Apollo 15 SLDEM2015 local patch",
+  "size": 257,
+  "spacing": 60.0,
+  "extentMetres": 7680.0,
+  "sourcePixelsPerDegree": 512,
+  "sourceResolutionMetres": 59.2252938,
+  "siteElevationMetres": -1928.287016632996,
+  "datumRadiusMetres": 1737400.0,
+  "source": "https://imbrium.mit.edu/DATA/SLDEM2015/TILES/FLOAT_IMG/SLDEM2015_512_00N_30N_000_045_FLOAT.IMG",
+  "sourceLabel": "https://imbrium.mit.edu/DATA/SLDEM2015/TILES/FLOAT_IMG/SLDEM2015_512_00N_30N_000_045_FLOAT.LBL",
+  "sourcePage": "https://pgda.gsfc.nasa.gov/products/54",
+  "credit": "NASA/LRO/LOLA and JAXA/SELENE Terrain Camera, SLDEM2015, Barker et al. (2016)",
+  "citation": "https://doi.org/10.1016/j.icarus.2015.07.039",
+  "heightDatum": "Landing-site tangent plane; local zero is aligned to regional landing-site zero. Blend over outer 1.5 km."
+}

@@ -1,8 +1,9 @@
 
     import * as THREE from 'three/webgpu';
-    import {rnd, noise, fbm, height, sampleSurface, configureTerrain} from './terrain.js';
+    import {rnd, noise, fbm, height, sampleSurface, configureTerrain, configureDetail} from './terrain.js';
     import {bodyPosition,starDirection,angularRadius,createSkyTransform,earthAxes} from './sky.js';
     import {createApollo15Landmark} from './landmark.js';
+    import {WAYPOINTS,MISSIONS,navigationReadout,heading,cardinal,createProgress,startExpedition,currentMission,visitMission,continueExpedition} from './navigation.js';
     const $ = (s) => document.getElementById(s);
     const clamp = THREE.MathUtils.clamp;
     const isTouch = matchMedia('(pointer:coarse)').matches;
@@ -187,13 +188,13 @@
       });
       const endLook=e=>{if(e.pointerId===lookID)lookID=null};
       renderer.domElement.addEventListener('pointerup',endLook);renderer.domElement.addEventListener('pointercancel',endLook);renderer.domElement.addEventListener('lostpointercapture',endLook);
-      addEventListener('keydown',e=>{key[e.code]=true;if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault()});
+      addEventListener('keydown',e=>{if(missionReading)return;key[e.code]=true;if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault()});
       addEventListener('keyup',e=>{key[e.code]=false});
       resetInput=()=>{for(const name in key)key[name]=false;move.x=move.y=0;ascend=descend=false;joyID=lookID=null;knob.style.left=knob.style.top='50%';moveSmoothed.set(0,0,0);boosting=false;$('cruise').setAttribute('aria-pressed','false');$('cruise').textContent='BOOST ×3'};
       addEventListener('blur',()=>{paused=true;resetInput()});
       addEventListener('focus',()=>{paused=document.hidden;lastFrame=performance.now();pumpTiles()});
       document.addEventListener('visibilitychange',()=>{paused=document.hidden;resetInput();lastFrame=performance.now();if(!paused)pumpTiles()});
-      $('settings').onclick=()=>{const panel=$('flightSettings');panel.hidden=!panel.hidden;$('settings').setAttribute('aria-expanded',String(!panel.hidden))};
+      $('settings').onclick=()=>{$('navPanel').hidden=true;$('navToggle').setAttribute('aria-expanded','false');const panel=$('flightSettings');panel.hidden=!panel.hidden;$('settings').setAttribute('aria-expanded',String(!panel.hidden))};
       $('sensitivity').oninput=e=>sensitivity=Number(e.target.value);
       $('gravity').onchange=e=>{lunarGravity=e.target.checked;moveSmoothed.y=0};
       $('skyDate').value=simulationDate.toISOString().slice(0,16);
@@ -215,7 +216,7 @@
     function frame(time){
       const dt=Math.min((time-lastFrame)/1000,.045);lastFrame=time;
       if(paused||terrainError||recoveryRequired)return;
-      if(running){
+      if(running&&!missionReading){
         yaw+=(targetYaw-yaw)*(1-Math.exp(-18*dt));pitch+=(targetPitch-pitch)*(1-Math.exp(-18*dt));
         camera.rotation.set(pitch,yaw,0,'YXZ');
         const mx=clamp(move.x+Number(!!key.KeyD)-Number(!!key.KeyA),-1,1);
@@ -261,6 +262,7 @@
         sun.position.copy(sun.userData.direction??new THREE.Vector3(1,1,0)).multiplyScalar(2000).add(new THREE.Vector3(camera.position.x,surface,camera.position.z));
         sun.target.position.set(camera.position.x,surface,camera.position.z);sun.target.updateMatrixWorld();
       }
+      if(running)updateExploration(time);
       if(time-lastStats>230){
         $('altitude').textContent=Math.max(0,Math.round(camera.position.y-ground(camera.position.x,camera.position.z))).toLocaleString();
         $('speed').textContent=Math.round(moveSmoothed.length())+' m/s';
@@ -268,14 +270,67 @@
       }
       try{renderer.render(scene,camera)}catch(error){showRecovery('Graphics stopped. Reload to recover.');console.error(error)}
     }
+    let missionProgress=createProgress(),missionReading=false,selectedWaypoint=WAYPOINTS[0],lastNavigationUpdate=0,canSaveProgress=true;
+    const progressKey='selene-apollo15-discoveries-v1',waypointProjection=new THREE.Vector3();
+    function formatDistance(distance){return distance<1000?Math.round(distance)+' m':(distance/1000).toFixed(1)+' km'}
+    function saveDiscoveries(){try{localStorage.setItem(progressKey,JSON.stringify(missionProgress))}catch{canSaveProgress=false}}
+    function selectWaypoint(id){selectedWaypoint=WAYPOINTS.find(w=>w.id===id)??WAYPOINTS[0];$('waypointSelect').value=selectedWaypoint.id;$('waypointDescription').textContent=selectedWaypoint.description;lastNavigationUpdate=0;}
+    function refreshMissionPanel(){
+      const complete=missionProgress.completed.length===MISSIONS.length,goal=currentMission(missionProgress);
+      $('missionProgress').textContent=missionProgress.completed.length+' / '+MISSIONS.length+' DISCOVERIES';
+      $('missionTitle').textContent=complete?'Expedition complete!':missionProgress.pending?'Discovery ready':goal?.title??'Your Apollo 15 expedition';
+      $('missionInstruction').textContent=complete?'You visited Falcon, Hadley Rille and Mons Hadley. Keep exploring or replay the expedition.':goal?.instruction??'Visit Falcon, find an ancient lava channel, explore a mountain, then return home.';
+      $('missionStart').textContent=missionProgress.started?'RESTART EXPEDITION':'START EXPEDITION';
+      $('trackMission').hidden=!goal;
+      $('saveNotice').textContent=canSaveProgress?'Discoveries save automatically on this device.':'Progress is session-only: browser storage is unavailable.';
+    }
+    function showDiscovery(){
+      const mission=MISSIONS.find(m=>m.id===missionProgress.pending);if(!mission)return;
+      missionReading=true;resetInput();$('navPanel').hidden=true;$('navToggle').setAttribute('aria-expanded','false');
+      $('discoveryTitle').textContent=mission.title;$('discoveryFact').textContent=mission.fact;
+      $('discoveryCount').textContent='DISCOVERY '+missionProgress.completed.length+' OF '+MISSIONS.length;
+      $('continueMission').textContent=missionProgress.completed.length===MISSIONS.length?'KEEP EXPLORING':'NEXT DISCOVERY';
+      $('discoveryDialog').hidden=false;
+      for(const id of ['top','bottom','joy','lift','navHUD','navPanel'])$(id).inert=true;
+      $('continueMission').focus();refreshMissionPanel();
+    }
+    function initExploration(){
+      try{missionProgress=createProgress(JSON.parse(localStorage.getItem(progressKey)))}catch{canSaveProgress=false}
+      for(const waypoint of WAYPOINTS){const option=document.createElement('option');option.value=waypoint.id;option.textContent=waypoint.name;$('waypointSelect').append(option)}
+      selectWaypoint(currentMission(missionProgress)?.target??'falcon');refreshMissionPanel();
+      $('navToggle').onclick=()=>{const panel=$('navPanel');panel.hidden=!panel.hidden;$('navToggle').setAttribute('aria-expanded',String(!panel.hidden));if(!panel.hidden){$('flightSettings').hidden=true;$('settings').setAttribute('aria-expanded','false')}};
+      $('closeNavigation').onclick=()=>{$('navPanel').hidden=true;$('navToggle').setAttribute('aria-expanded','false');$('navToggle').focus()};
+      $('waypointSelect').onchange=e=>selectWaypoint(e.target.value);
+      $('faceWaypoint').onclick=()=>{const point=selectedWaypoint,dx=point.x-camera.position.x,dz=point.z-camera.position.z,angle=Math.atan2(-dx,-dz);targetYaw=yaw+Math.atan2(Math.sin(angle-yaw),Math.cos(angle-yaw));targetPitch=clamp(Math.atan2(height(point.x,point.z)+10-camera.position.y,Math.hypot(dx,dz)),-1.49,1.49);$('navPanel').hidden=true;$('navToggle').setAttribute('aria-expanded','false')};
+      $('trackMission').onclick=()=>{const goal=currentMission(missionProgress);if(goal)selectWaypoint(goal.target)};
+      $('missionStart').onclick=()=>{missionProgress=startExpedition();saveDiscoveries();selectWaypoint('falcon');refreshMissionPanel()};
+      $('continueMission').onclick=()=>{missionProgress=continueExpedition(missionProgress);missionReading=false;resetInput();$('discoveryDialog').hidden=true;for(const id of ['top','bottom','joy','lift','navHUD','navPanel'])$(id).inert=false;saveDiscoveries();const next=currentMission(missionProgress);if(next)selectWaypoint(next.target);refreshMissionPanel();$('navToggle').focus()};
+      $('discoveryDialog').addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();$('continueMission').focus()}});
+      $('start').addEventListener('click',()=>{if(missionProgress.pending)showDiscovery()});
+    }
+    function updateExploration(time){
+      if(time-lastNavigationUpdate>120){
+        const nav=navigationReadout(camera.position.x,camera.position.z,yaw,selectedWaypoint);
+        $('compass').textContent=cardinal(nav.heading)+' '+String(Math.round(nav.heading)%360).padStart(3,'0')+'°';
+        $('waypointReadout').textContent=nav.arrow+' '+selectedWaypoint.short+' · '+formatDistance(nav.distance);
+        $('waypointBearing').textContent='Bearing '+Math.round(nav.bearing)%360+'° '+cardinal(nav.bearing)+' · '+formatDistance(nav.distance)+' away';
+        if(!missionReading){const updated=visitMission(missionProgress,camera.position,ground(camera.position.x,camera.position.z));if(updated!==missionProgress){missionProgress=updated;saveDiscoveries();showDiscovery()}}
+        lastNavigationUpdate=time;
+      }
+      camera.updateMatrixWorld();
+      waypointProjection.set(selectedWaypoint.x,height(selectedWaypoint.x,selectedWaypoint.z)+18,selectedWaypoint.z).project(camera);
+      const marker=$('waypointMarker');marker.hidden=selectedWaypoint.id==='falcon'||waypointProjection.z>1||waypointProjection.z< -1||Math.abs(waypointProjection.x)>.9||Math.abs(waypointProjection.y)>.8;
+      marker.textContent='◇ '+selectedWaypoint.short;marker.style.left=((waypointProjection.x+1)*innerWidth/2)+'px';marker.style.top=((-waypointProjection.y+1)*innerHeight/2)+'px';
+    }
     function showRecovery(message){recoveryRequired=true;paused=true;resetInput();$('status').hidden=false;$('status').textContent=message+' ';const button=document.createElement('button');button.textContent='RELOAD';button.className='pill';button.onclick=()=>location.reload();$('status').append(button)}
     async function boot(){
       try{
         $('loadingText').textContent='INITIALISING WEBGPU RENDERER…';
-        const metadataResponse=await fetch('./apollo15.json'),elevationResponse=await fetch('./apollo15.f32');
-        if(!metadataResponse.ok||!elevationResponse.ok)throw new Error('Apollo 15 elevation data unavailable');
+        const [metadataResponse,elevationResponse,detailMetaResponse,detailResponse]=await Promise.all([fetch('./apollo15.json'),fetch('./apollo15.f32'),fetch('./apollo15-detail.json'),fetch('./apollo15-detail.f32')]);
+        if(!metadataResponse.ok||!elevationResponse.ok||!detailMetaResponse.ok||!detailResponse.ok)throw new Error('Apollo 15 elevation data unavailable');
         siteMetadata=await metadataResponse.json();const elevationBuffer=await elevationResponse.arrayBuffer();configureTerrain(siteMetadata,elevationBuffer);
-        worker.postMessage({type:'init',metadata:siteMetadata,buffer:elevationBuffer});
+        const detailMetadata=await detailMetaResponse.json(),detailBuffer=await detailResponse.arrayBuffer();configureDetail(detailMetadata,detailBuffer);
+        worker.postMessage({type:'init',metadata:siteMetadata,buffer:elevationBuffer,detailMetadata,detailBuffer});
         scene=new THREE.Scene();scene.background=new THREE.Color(0x010205);
         camera=new THREE.PerspectiveCamera(isTouch?74:70,innerWidth/innerHeight,.5,180000);
         renderer=new THREE.WebGPURenderer({antialias:true,alpha:false,forceWebGL});
@@ -288,7 +343,7 @@
         renderer.setSize(innerWidth,innerHeight);
         await renderer.init();
         $('backend').textContent=renderer.backend?.isWebGPUBackend?'WebGPU':'WebGL 2';
-        $('loadingText').textContent='SCULPTING CRATERS AND HIGHLANDS…';
+        $('loadingText').textContent='LOADING 60 M APOLLO 15 TERRAIN…';
         await new Promise(r=>requestAnimationFrame(r));
         const ambient=new THREE.AmbientLight(0xb4b8c0,.055);scene.add(ambient);
         sun=new THREE.DirectionalLight(0xfffaf0,3.0);
@@ -302,7 +357,7 @@
         terrainMaterial=new THREE.MeshStandardMaterial({map:createDustTexture(),vertexColors:true,roughness:1,metalness:0});
         camera.position.set(startPoint.x,height(startPoint.x,startPoint.z)+startPoint.y,startPoint.z);
         await createStars();await createEarth();createRocks();scene.add(createApollo15Landmark(height));updateTiles();
-        initControls();configureGraphics();updateSky(true);
+        initControls();initExploration();configureGraphics();updateSky(true);
         renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();showRecovery('Graphics context lost. Reload to recover.')});
         if(renderer.backend?.device?.lost)renderer.backend.device.lost.then(()=>showRecovery('Graphics device disconnected. Reload to recover.'));
         while((!tiles.has('0,0')||!horizonMesh)&&!terrainError)await new Promise(r=>setTimeout(r,20));

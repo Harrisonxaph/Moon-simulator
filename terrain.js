@@ -8,14 +8,23 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
       return (a+(b-a)*u)*(1-v)+(c+(d-c)*u)*v;
     }
     function fbm(x,z,n){let s=0,a=.5,f=1;for(let i=0;i<n;i++){s+=noise(x*f,z*f)*a;a*=.5;f*=2.02}return s}
-let elevation=null,site=null;
+let elevation=null,site=null,detail=null,detailSite=null;
 export function configureTerrain(metadata,buffer){site=metadata;elevation=buffer instanceof Float32Array?buffer:new Float32Array(buffer);if(elevation.length!==site.size**2)throw new Error('Invalid elevation data');}
+export function configureDetail(metadata,buffer){detailSite=metadata;detail=buffer instanceof Float32Array?buffer:new Float32Array(buffer);if(detail.length!==metadata.size**2)throw new Error('Invalid detail elevation data');}
+function sampleGrid(x,z,metadata,values){
+ const half=(metadata.size-1)/2,gx=clamp(x/metadata.spacing+half,0,metadata.size-1-1e-8),gz=clamp(z/metadata.spacing+half,0,metadata.size-1-1e-8);
+ const i=Math.floor(gx),j=Math.floor(gz),u=gx-i,v=gz-j,n=metadata.size;
+ const a=values[j*n+i],b=values[j*n+i+1],c=values[(j+1)*n+i],d=values[(j+1)*n+i+1];
+ return u+v<=1?a+(b-a)*u+(c-a)*v:d+(c-d)*(1-u)+(b-d)*(1-v);
+}
 export function measuredHeight(x,z){
  if(!elevation)throw new Error('Elevation data not loaded');
- const half=(site.size-1)/2,gx=clamp(x/site.spacing+half,0,site.size-1-1e-8),gz=clamp(z/site.spacing+half,0,site.size-1-1e-8);
- const i=Math.floor(gx),j=Math.floor(gz),u=gx-i,v=gz-j,n=site.size;
- const a=elevation[j*n+i],b=elevation[j*n+i+1],c=elevation[(j+1)*n+i],d=elevation[(j+1)*n+i+1];
- return u+v<=1?a+(b-a)*u+(c-a)*v:d+(c-d)*(1-u)+(b-d)*(1-v);
+ const regional=sampleGrid(x,z,site,elevation);
+ if(!detail)return regional;
+ const edge=Math.max(Math.abs(x),Math.abs(z)),extent=detailSite.extentMetres;
+ if(edge>=extent)return regional;
+ const blend=clamp((extent-edge)/1500,0,1),smooth=blend*blend*(3-2*blend);
+ return regional+(sampleGrid(x,z,detailSite,detail)-regional)*smooth;
 }
 function height(x,z){return measuredHeight(x,z);}
 
