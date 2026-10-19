@@ -12,7 +12,7 @@
     let renderer, camera, scene, sun, earth, stars;
     let running = false, lowPower = isTouch, boosting = false, ascend = false, descend = false;
     let yaw = 0, pitch = -Math.atan2(16,42), targetYaw=0, targetPitch=-Math.atan2(16,42), cameraSpeed = 62;
-    let sensitivity=1, lunarGravity=false, paused=false, recoveryRequired=false, resetInput=()=>{};
+    let sensitivity=1, lunarGravity=false, immersive=false, paused=false, recoveryRequired=false, resetInput=()=>{};
     let lastFrame = performance.now(), lastStats = 0;
     const key = {}, move = {x:0,y:0}, tiles = new Map();
     const startPoint = new THREE.Vector3(0,18,42);
@@ -161,7 +161,20 @@
       $('quality').textContent=lowPower?'DETAIL: ECO':'DETAIL: HIGH';
       $('quality').setAttribute('aria-pressed',String(lowPower));
     }
+    function setImmersive(value){
+      if(missionReading)return;
+      immersive=value;document.body.classList.toggle('immersive',value);
+      $('menuToggle').textContent=value?'SHOW MENUS':'HIDE MENUS';
+      $('menuToggle').setAttribute('aria-expanded',String(!value));
+      $('menuToggle').setAttribute('aria-label',value?'Show menus and return to detailed view':'Hide menus and enter immersive view');
+      $('navPanel').hidden=true;$('flightSettings').hidden=true;
+      for(const id of ['navToggle','missionsButton','settings'])$(id).setAttribute('aria-expanded','false');
+      try{localStorage.setItem('selene-immersive',String(value))}catch{}
+      if(running){$('menuToggle').focus({preventScroll:true});if(!value&&missionProgress.pending)showDiscovery();}
+    }
     function initControls(){
+      try{setImmersive(localStorage.getItem('selene-immersive')==='true')}catch{}
+      $('menuToggle').onclick=()=>setImmersive(!immersive);
       const joy=$('joy'),knob=$('stick');let joyID=null;
       function handleJoy(e){
         const rect=joy.getBoundingClientRect(),cx=rect.left+rect.width/2,cy=rect.top+rect.height/2;
@@ -188,7 +201,7 @@
       });
       const endLook=e=>{if(e.pointerId===lookID)lookID=null};
       renderer.domElement.addEventListener('pointerup',endLook);renderer.domElement.addEventListener('pointercancel',endLook);renderer.domElement.addEventListener('lostpointercapture',endLook);
-      addEventListener('keydown',e=>{if(missionReading)return;key[e.code]=true;if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault()});
+      addEventListener('keydown',e=>{if(missionReading||(e.code==='Space'&&e.target===$('menuToggle')))return;key[e.code]=true;if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault()});
       addEventListener('keyup',e=>{key[e.code]=false});
       resetInput=()=>{for(const name in key)key[name]=false;move.x=move.y=0;ascend=descend=false;joyID=lookID=null;knob.style.left=knob.style.top='50%';moveSmoothed.set(0,0,0);boosting=false;$('cruise').setAttribute('aria-pressed','false');$('cruise').textContent='BOOST ×3'};
       addEventListener('blur',()=>{paused=true;resetInput()});
@@ -207,7 +220,7 @@
       $('cruise').addEventListener('click',()=>{boosting=!boosting;$('cruise').setAttribute('aria-pressed',String(boosting));$('cruise').textContent=boosting?'BOOST: ON':'BOOST ×3'});
       $('quality').addEventListener('click',()=>{lowPower=!lowPower;configureGraphics()});
       $('reset').addEventListener('click',()=>resetFlight());
-      $('start').addEventListener('click',()=>{if(!renderer)return;running=true;$('overlay').classList.add('hidden')});
+      $('start').addEventListener('click',()=>{if(!renderer)return;running=true;$('overlay').classList.add('hidden');$('menuToggle').hidden=false});
     }
     function resetFlight(){
       camera.position.set(startPoint.x,height(startPoint.x,startPoint.z)+startPoint.y,startPoint.z);
@@ -285,13 +298,14 @@
       $('saveNotice').textContent=canSaveProgress?'Discoveries save automatically on this device.':'Progress is session-only: browser storage is unavailable.';
     }
     function showDiscovery(){
+      if(immersive){refreshMissionPanel();return;}
       const mission=MISSIONS.find(m=>m.id===missionProgress.pending);if(!mission)return;
       missionReading=true;resetInput();$('navPanel').hidden=true;$('navToggle').setAttribute('aria-expanded','false');$('missionsButton').setAttribute('aria-expanded','false');
       $('discoveryTitle').textContent=mission.title;$('discoveryFact').textContent=mission.fact;
       $('discoveryCount').textContent='DISCOVERY '+missionProgress.completed.length+' OF '+MISSIONS.length;
       $('continueMission').textContent=missionProgress.completed.length===MISSIONS.length?'KEEP EXPLORING':'NEXT DISCOVERY';
       $('discoveryDialog').hidden=false;
-      for(const id of ['top','bottom','joy','lift','navHUD','navPanel'])$(id).inert=true;
+      for(const id of ['top','bottom','joy','lift','navHUD','navPanel','menuToggle'])$(id).inert=true;
       $('continueMission').focus();refreshMissionPanel();
     }
     function initExploration(){
@@ -317,7 +331,7 @@
       $('faceWaypoint').onclick=()=>{const point=selectedWaypoint,dx=point.x-camera.position.x,dz=point.z-camera.position.z,angle=Math.atan2(-dx,-dz);targetYaw=yaw+Math.atan2(Math.sin(angle-yaw),Math.cos(angle-yaw));targetPitch=clamp(Math.atan2(height(point.x,point.z)+10-camera.position.y,Math.hypot(dx,dz)),-1.49,1.49);$('navPanel').hidden=true;$('navToggle').setAttribute('aria-expanded','false')};
       $('trackMission').onclick=()=>{const goal=currentMission(missionProgress);if(goal)selectWaypoint(goal.target)};
       $('missionStart').onclick=()=>{missionProgress=startExpedition();saveDiscoveries();selectWaypoint('falcon');refreshMissionPanel()};
-      $('continueMission').onclick=()=>{missionProgress=continueExpedition(missionProgress);missionReading=false;resetInput();$('discoveryDialog').hidden=true;for(const id of ['top','bottom','joy','lift','navHUD','navPanel'])$(id).inert=false;saveDiscoveries();const next=currentMission(missionProgress);if(next)selectWaypoint(next.target);refreshMissionPanel();$('navToggle').focus()};
+      $('continueMission').onclick=()=>{missionProgress=continueExpedition(missionProgress);missionReading=false;resetInput();$('discoveryDialog').hidden=true;for(const id of ['top','bottom','joy','lift','navHUD','navPanel','menuToggle'])$(id).inert=false;saveDiscoveries();const next=currentMission(missionProgress);if(next)selectWaypoint(next.target);refreshMissionPanel();$('navToggle').focus()};
       $('discoveryDialog').addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();$('continueMission').focus()}});
       $('start').addEventListener('click',()=>{if(missionProgress.pending)showDiscovery()});
     }
