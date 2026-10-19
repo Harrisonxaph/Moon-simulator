@@ -194,7 +194,7 @@
       addEventListener('blur',()=>{paused=true;resetInput()});
       addEventListener('focus',()=>{paused=document.hidden;lastFrame=performance.now();pumpTiles()});
       document.addEventListener('visibilitychange',()=>{paused=document.hidden;resetInput();lastFrame=performance.now();if(!paused)pumpTiles()});
-      $('settings').onclick=()=>{$('navPanel').hidden=true;$('navToggle').setAttribute('aria-expanded','false');const panel=$('flightSettings');panel.hidden=!panel.hidden;$('settings').setAttribute('aria-expanded',String(!panel.hidden))};
+      $('settings').onclick=()=>{$('navPanel').hidden=true;$('navToggle').setAttribute('aria-expanded','false');$('missionsButton').setAttribute('aria-expanded','false');const panel=$('flightSettings');panel.hidden=!panel.hidden;$('settings').setAttribute('aria-expanded',String(!panel.hidden))};
       $('sensitivity').oninput=e=>sensitivity=Number(e.target.value);
       $('gravity').onchange=e=>{lunarGravity=e.target.checked;moveSmoothed.y=0};
       $('skyDate').value=simulationDate.toISOString().slice(0,16);
@@ -274,7 +274,7 @@
     const progressKey='selene-apollo15-discoveries-v1',waypointProjection=new THREE.Vector3();
     function formatDistance(distance){return distance<1000?Math.round(distance)+' m':(distance/1000).toFixed(1)+' km'}
     function saveDiscoveries(){try{localStorage.setItem(progressKey,JSON.stringify(missionProgress))}catch{canSaveProgress=false}}
-    function selectWaypoint(id){selectedWaypoint=WAYPOINTS.find(w=>w.id===id)??WAYPOINTS[0];$('waypointSelect').value=selectedWaypoint.id;$('waypointDescription').textContent=selectedWaypoint.description;lastNavigationUpdate=0;}
+    function selectWaypoint(id){selectedWaypoint=WAYPOINTS.find(w=>w.id===id)??WAYPOINTS[0];$('waypointSelect').value=selectedWaypoint.id;$('waypointDescription').textContent=selectedWaypoint.description;document.querySelectorAll('[data-waypoint]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.waypoint===selectedWaypoint.id)));lastNavigationUpdate=0;}
     function refreshMissionPanel(){
       const complete=missionProgress.completed.length===MISSIONS.length,goal=currentMission(missionProgress);
       $('missionProgress').textContent=missionProgress.completed.length+' / '+MISSIONS.length+' DISCOVERIES';
@@ -286,7 +286,7 @@
     }
     function showDiscovery(){
       const mission=MISSIONS.find(m=>m.id===missionProgress.pending);if(!mission)return;
-      missionReading=true;resetInput();$('navPanel').hidden=true;$('navToggle').setAttribute('aria-expanded','false');
+      missionReading=true;resetInput();$('navPanel').hidden=true;$('navToggle').setAttribute('aria-expanded','false');$('missionsButton').setAttribute('aria-expanded','false');
       $('discoveryTitle').textContent=mission.title;$('discoveryFact').textContent=mission.fact;
       $('discoveryCount').textContent='DISCOVERY '+missionProgress.completed.length+' OF '+MISSIONS.length;
       $('continueMission').textContent=missionProgress.completed.length===MISSIONS.length?'KEEP EXPLORING':'NEXT DISCOVERY';
@@ -296,10 +296,23 @@
     }
     function initExploration(){
       try{missionProgress=createProgress(JSON.parse(localStorage.getItem(progressKey)))}catch{canSaveProgress=false}
-      for(const waypoint of WAYPOINTS){const option=document.createElement('option');option.value=waypoint.id;option.textContent=waypoint.name;$('waypointSelect').append(option)}
+      for(const waypoint of WAYPOINTS){
+        const option=document.createElement('option');option.value=waypoint.id;option.textContent=waypoint.name;$('waypointSelect').append(option);
+        const button=document.createElement('button');button.type='button';button.className='placeOption';button.dataset.waypoint=waypoint.id;button.setAttribute('aria-pressed','false');
+        const title=document.createElement('span');title.textContent=waypoint.name;const distance=document.createElement('small');distance.id='place-distance-'+waypoint.id;button.append(title,distance);button.onclick=()=>selectWaypoint(waypoint.id);$('placesList').append(button);
+      }
       selectWaypoint(currentMission(missionProgress)?.target??'falcon');refreshMissionPanel();
-      $('navToggle').onclick=()=>{const panel=$('navPanel');panel.hidden=!panel.hidden;$('navToggle').setAttribute('aria-expanded',String(!panel.hidden));if(!panel.hidden){$('flightSettings').hidden=true;$('settings').setAttribute('aria-expanded','false')}};
-      $('closeNavigation').onclick=()=>{$('navPanel').hidden=true;$('navToggle').setAttribute('aria-expanded','false');$('navToggle').focus()};
+      const openNavigation=section=>{
+        $('navPanel').hidden=false;$('navPanel').scrollTop=0;
+        $('placesSection').hidden=section!=='places';$('missionSection').hidden=section!=='missions';
+        $('navigationTitle').textContent=section==='missions'?'Your discovery missions':'Places to explore';
+        $('navToggle').setAttribute('aria-expanded',String(section==='places'));$('missionsButton').setAttribute('aria-expanded',String(section==='missions'));
+        $('showPlaces').setAttribute('aria-pressed',String(section==='places'));$('showMissions').setAttribute('aria-pressed',String(section==='missions'));
+        $('flightSettings').hidden=true;$('settings').setAttribute('aria-expanded','false');
+      };
+      $('navToggle').onclick=()=>openNavigation('places');$('missionsButton').onclick=()=>openNavigation('missions');
+      $('showPlaces').onclick=()=>openNavigation('places');$('showMissions').onclick=()=>openNavigation('missions');
+      $('closeNavigation').onclick=()=>{$('navPanel').hidden=true;$('navToggle').setAttribute('aria-expanded','false');$('missionsButton').setAttribute('aria-expanded','false');$('navToggle').focus()};
       $('waypointSelect').onchange=e=>selectWaypoint(e.target.value);
       $('faceWaypoint').onclick=()=>{const point=selectedWaypoint,dx=point.x-camera.position.x,dz=point.z-camera.position.z,angle=Math.atan2(-dx,-dz);targetYaw=yaw+Math.atan2(Math.sin(angle-yaw),Math.cos(angle-yaw));targetPitch=clamp(Math.atan2(height(point.x,point.z)+10-camera.position.y,Math.hypot(dx,dz)),-1.49,1.49);$('navPanel').hidden=true;$('navToggle').setAttribute('aria-expanded','false')};
       $('trackMission').onclick=()=>{const goal=currentMission(missionProgress);if(goal)selectWaypoint(goal.target)};
@@ -313,6 +326,7 @@
         const nav=navigationReadout(camera.position.x,camera.position.z,yaw,selectedWaypoint);
         $('compass').textContent=cardinal(nav.heading)+' '+String(Math.round(nav.heading)%360).padStart(3,'0')+'°';
         $('waypointReadout').textContent=nav.arrow+' '+selectedWaypoint.short+' · '+formatDistance(nav.distance);
+        for(const waypoint of WAYPOINTS){const info=navigationReadout(camera.position.x,camera.position.z,yaw,waypoint);$('place-distance-'+waypoint.id).textContent=formatDistance(info.distance)+' · '+Math.round(info.bearing)%360+'° '+cardinal(info.bearing)}
         $('waypointBearing').textContent='Bearing '+Math.round(nav.bearing)%360+'° '+cardinal(nav.bearing)+' · '+formatDistance(nav.distance)+' away';
         if(!missionReading){const updated=visitMission(missionProgress,camera.position,ground(camera.position.x,camera.position.z));if(updated!==missionProgress){missionProgress=updated;saveDiscoveries();showDiscovery()}}
         lastNavigationUpdate=time;
