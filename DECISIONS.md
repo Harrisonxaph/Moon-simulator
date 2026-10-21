@@ -27,3 +27,11 @@ terrain/astronomy rationale. Historic dates/alternatives are not reconstructed.
 - Affected: terrain.test.mjs setup and `.github/` workflow/checkers only.
 - Broader browser/archive restoration is a follow-up, not performed or approved
   as a feature change here. Hosted CI is unverified until a run is observed.
+
+## 2026-10-22 — MIT licence and repository hygiene
+
+- Decision: the owner chose the MIT Licence for this repository's code (LICENSE, committed to main). Third-party data, imagery and vendored libraries keep the licences recorded in CREDITS.md; the README now states this split.
+- Also: add a `.gitignore` (dependencies, environment files, local deploy/test output, release ZIPs) and correct the README verification section to the one test that exists.
+- Not done: no `package.json` was added, so the static/no-build setup recorded in PROJECT.md and the Vercel deployment stay unchanged.
+- Affected: LICENSE (main), README.md, .gitignore, DECISIONS.md. No runtime files changed.
+
