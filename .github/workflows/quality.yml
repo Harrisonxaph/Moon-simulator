@@ -1,0 +1,41 @@
+name: PR quality
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  sources-and-docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+      - run: python3 .github/scripts/check_agent_docs.py
+      - run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+      - name: Parse current JavaScript without executing the application
+        run: |
+          for source in app.js terrain.js terrain-worker.js sky.js navigation.js landmark.js astronomy.js js/*.js terrain.test.mjs; do
+            node --check "$source"
+          done
+      - run: node terrain.test.mjs
+      - name: Validate required runtime files and JSON
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          files = 'index.html app.js terrain.js terrain-worker.js sky.js landmark.js navigation.js astronomy.js apollo15.json apollo15.f32 apollo15-detail.json apollo15-detail.f32 stars.json earth.jpg'.split()
+          for name in files:
+              path = Path(name)
+              assert path.is_file() and path.stat().st_size > 0, name
+              if path.suffix == '.json':
+                  json.loads(path.read_text())
+          print('14 runtime files and their JSON metadata/catalogue validated')
+          PY

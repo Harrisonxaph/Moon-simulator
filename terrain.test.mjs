@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildTile,sampleSurface} from '../terrain.js';
+import {readFileSync} from 'node:fs';
+import {buildTile,sampleSurface,configureTerrain,configureDetail} from './terrain.js';
+// Mirror app.js boot: configure the checked-in elevation before sampling geometry.
+for(const [name,configure] of [['apollo15',configureTerrain],['apollo15-detail',configureDetail]]){
+ const metadata=JSON.parse(readFileSync(new URL(`./${name}.json`,import.meta.url),'utf8'));
+ const bytes=readFileSync(new URL(`./${name}.f32`,import.meta.url));
+ configure(metadata,bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength));
+}
 for(const segments of [32,48]){
  test(`tile edges and lighting match at ${segments} segments`,()=>{
   const a=buildTile(0,0,segments),b=buildTile(1,0,segments),n=segments+1;
