@@ -70,13 +70,15 @@ This is an educational approximation, not navigation or observatory software. Pl
 ## Verification
 
 ```sh
-node tests/terrain.test.mjs
-node tests/location.test.mjs
-node tests/sky.test.mjs
-node tests/navigation.test.mjs
-node tests/detail.test.mjs
+node terrain.test.mjs
 ```
+
+This is the only test currently in the repository: four terrain cases (tile edges, normals and collision sampling against the Apollo 15 data). The PR quality workflow runs it on every pull request, along with JavaScript syntax checks and runtime-file validation. The location, sky, navigation and detail tests, the browser tests and the `scripts/` data tools listed in the code map above are not in the repository; see [TASKS.md](TASKS.md) for restoring them.
 
 Tests cover matching tile edges/normals and collision sampling with the detailed patch, smooth blending, compass bearings, ordered mission arrivals, saved-progress validation, distant-ring geometry, terrain relief, and Sun/Earth/Venus/Jupiter positions compared with saved NASA JPL Horizons observer ephemerides (0.03° tolerance at Apollo 15 landing time). That is a regression tolerance for the sampled epoch, not an accuracy guarantee for all dates.
 
 `tests/immersive-browser.cjs` checks hide/show, real touch flight, portrait/landscape layouts, saved view preference, queued discovery cards and keyboard activation. `tests/visibility-browser.cjs` checks the actual screen bounds of the mission start button at 390×844, 844×390 and 320×568, all three destination cards, and the first discovery. `tests/browser.cjs` runs the general browser smoke checks; `tests/expedition-browser.cjs` checks the new navigation, discovery cards and persistence, using test-only position shortcuts for distant arrivals. Neither adds test hooks to the shipped app. Both require Playwright installed; set `SELENE_TEST_URL` for a deployment or local server. Browser emulation does not prove physical-phone performance. Retest actual iPhone Safari and Android Chrome for orientation, multi-touch, background/resume, thermal performance, and prolonged flight after uploading.
+
+## Licence
+
+The code in this repository is released under the [MIT Licence](LICENSE). Third-party data, imagery and vendored libraries keep their own licences and credit requirements, listed in [CREDITS.md](CREDITS.md). In particular, the HYG star catalogue (`stars.json`) is CC BY-SA 4.0 and NASA imagery follows NASA's media usage guidelines.
